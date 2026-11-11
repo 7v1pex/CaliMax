@@ -1283,9 +1283,12 @@ function stepper(key, label, unit, step) { const v = S[S.mode][key]; return `<di
 function seg(key, opts) { return `<div class="seg" style="grid-template-columns:repeat(${opts.length},minmax(0,1fr))">${opts.map(([v, l]) => `<button class="${S[S.mode][key] === v ? 'on' : ''}" data-act="pset" data-k="${key}" data-v="${v}">${l}</button>`).join('')}</div>`; }
 function restStepper(key, label, def) { const v = S[S.mode][key]; return `<div class="stepper"><span class="lbl">${label}</span><button data-act="prest" data-k="${key}" data-d="-15" data-def="${def}" aria-label="${label} kürzer">−</button><span class="val" style="font-size:17px">${v == null ? 'Auto' : mmss(v)}</span><button data-act="prest" data-k="${key}" data-d="15" data-def="${def}" aria-label="${label} länger">+</button>${v != null ? `<button data-act="prestauto" data-k="${key}" style="width:auto;padding:0 10px;font-size:13px" aria-label="${label} automatisch">Auto</button>` : ''}</div>`; }
 function voiceSection() {
+  if (S.mode === 'cali') return `<section class="stack"><h2>Trainer-Stimme</h2>
+    <span class="small muted" style="line-height:1.5">Calisthenics nutzt die Stimme <b style="color:var(--text)">Jonas</b> (aufgenommen mit ElevenLabs) – für alle Anleitungen und Ansagen im Training. Die Handy-Stimme wird hier nicht benutzt.</span>
+    <button class="btn btn-sm btn-soft" style="align-self:flex-start" data-act="vtestclip"><span style="color:var(--accent);display:flex">${I.speaker}</span>Probe hören</button></section>`;
   const vs = deVoices().slice().sort((a, b) => voiceScore(b) - voiceScore(a)); const cur = VOICE.v ? VOICE.v.voiceURI : ''; const allN = (() => { try { return speechSynthesis.getVoices().length; } catch (e) { return 0; } })();
   const rate = S.voiceRate || 0.97;
-  return `<section class="stack"><h2>Stimme zum Vorlesen</h2>
+  return `<section class="stack"><h2>Stimme zum Vorlesen (Gym)</h2>
     ${vs.length ? `<label class="stack" style="gap:4px" for="voice-sel"><span class="small muted">${vs.length} deutsche Stimme${vs.length === 1 ? '' : 'n'} gefunden (insgesamt ${allN} Stimmen auf dem Gerät)</span><select id="voice-sel" class="inp">${vs.map((v) => `<option value="${esc(v.voiceURI)}" ${v.voiceURI === cur ? 'selected' : ''}>${esc(voiceLabel(v))}${voiceScore(v) >= 40 ? ' ★' : ''}</option>`).join('')}</select></label>` : '<span class="small muted">Auf diesem Gerät wurde keine deutsche Stimme gefunden.</span>'}
     <div class="seg" style="grid-template-columns:repeat(3,minmax(0,1fr))">${[[0.85, 'Langsam'], [0.97, 'Normal'], [1.1, 'Schnell']].map(([r, l]) => `<button class="${Math.abs(rate - r) < 0.01 ? 'on' : ''}" data-act="vrate" data-v="${r}">${l}</button>`).join('')}</div>
     <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-soft" data-act="vreload">Stimmen neu suchen</button></div>
@@ -1442,6 +1445,7 @@ const A = {
   reviewok() { S.reviewSeen = weekKey(new Date()); save(); render(); },
   vrate(d) { S.voiceRate = +d.v; save(); render(); },
   vreload() { pickVoice(); try { speechSynthesis.getVoices(); } catch (e) {} setTimeout(() => { pickVoice(); render(); toast(deVoices().length + ' deutsche Stimmen gefunden'); }, 400); },
+  vtestclip() { unlockAudio(); playClip('coach_on', 'test', 'Sprachansagen sind an.'); },
   vtest() { speak('Hallo! So klingt diese Stimme. Nächste Übung: Klimmzüge. Vier Sätze, Ziel acht bis zehn Wiederholungen.', 'test'); },
   speak(d) { if (ui.speaking === d.n) { stopSpeak(); return; } const demo = document.querySelector(`[data-act="speak"][data-n="${CSS.escape(d.n)}"]`); const v = demo && demo.closest('.demo') && demo.closest('.demo').querySelector('video'); if (v) { try { v.currentTime = 0; v.play(); } catch (e) {} } const c = clipFor(d.n); if (c) playClip(c, d.n, guideText(d.n)); else speak(guideText(d.n), d.n); },
   coach() { S.coach = !S.coach; save(); if (S.coach) { unlockAudio(); coachSay('coach_on', 'Sprachansagen sind an.'); } else stopSpeak(); render(); },
