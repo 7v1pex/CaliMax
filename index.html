@@ -180,6 +180,7 @@ h2 { font-size: 18px; font-weight: 600; }
 .award .aw-ic { width: 40px; height: 40px; border-radius: 12px; background: var(--surface-2); color: var(--muted); display: flex; align-items: center; justify-content: center; margin-bottom: 4px; }
 .award.on { opacity: 1; border: 1px solid var(--accent); }
 .award.on .aw-ic { background: var(--accent); color: var(--on-accent); }
+.speak.on { outline: 2px solid var(--accent); }
 .yt { width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 12px; background: #000; display: block; }
 .inp { width: 100%; min-height: 48px; border-radius: 12px; border: 1px solid var(--surface-2); background: var(--bg); color: var(--fg); padding: 0 12px; font-size: 16px; }
 /* warm, feel, plates, notes */
@@ -273,6 +274,7 @@ const I = {
   food: '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v8M4 3v5a3 3 0 0 0 6 0V3M7 11v10M17 3c-2 2-3 5-3 8h3v10"/></svg>',
   run: '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="14" cy="4.5" r="2"/><path d="M8 21l3-6 3 2v4M6 12l3-4 4 1 3 4 3 1"/></svg>',
   trophy: '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 6h3v2a3 3 0 0 1-3 3M7 6H4v2a3 3 0 0 0 3 3"/></svg>',
+  speaker: '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
   user: '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg>'
 };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -527,9 +529,20 @@ function arrowSVG(from, to) {
   return `<line class="arw" x1="${r(x1)}" y1="${r(y1)}" x2="${r(x2 - ux * 6)}" y2="${r(y2 - uy * 6)}" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 6"/><polygon class="arwh" points="${pts}"/>`;
 }
 function ytId(u) { const m = /(?:youtu\.be\/|[?&]v=|embed\/|shorts\/|live\/)([A-Za-z0-9_-]{11})/.exec(u || ''); return m ? m[1] : (/^[A-Za-z0-9_-]{11}$/.test((u || '').trim()) ? u.trim() : null); }
+const YT_RULES = [['pseudo-planche', 'NjD0qEusDEI'], ['nordic', 'K7Gr4M79JnY'], ['beinbeuger', 'K7Gr4M79JnY'], ['dragon', '548SQRBzFtQ'], ['handstand-liegest', '_i19oSbWwOs'], ['hspu', '_i19oSbWwOs'], ['pike push', '_i19oSbWwOs'], ['handstand', 'lXkIP9HEd4c'],
+  ['muscle-up', 'phPqQZyCSYo'], ['front lever', 'mOL2lWrZYeo'], ['back lever', 'boAAm9bItaI'], ['skin the cat', 'boAAm9bItaI'], ['planche', 'WKuKObzNyUQ'], ['frog stand', 'WKuKObzNyUQ'], ['human flag', 'CE74Ic5bHSs'], ['flagge', 'CE74Ic5bHSs'], ['tuck flag', 'CE74Ic5bHSs'], ['straddle flag', 'CE74Ic5bHSs'],
+  ['l-sit', 'CUjpIK6zA84'], ['tuck sit', 'CUjpIK6zA84'], ['v-sit', 'CUjpIK6zA84'], ['hollow', '0rmsQlnCM60'], ['seitstütz', '86f9Hcb_Nqw'], ['plank', '0Zr5Zj348Y8'],
+  ['liegendes beinheben', ''], ['beinheben', 'UNTdIGM_EJI'], ['knieheben', 'UNTdIGM_EJI'], ['toes to bar', 'UNTdIGM_EJI'], ['australian', 'E8Z5meC05Fk'],
+  ['klimmz', 'lbDHNu6XkU8'], ['chin-up', 'lbDHNu6XkU8'], ['dip', '3cddYrKKFec'], ['liegest', 'NjD0qEusDEI'], ['pistol', 'VcfYzyak4AM'],
+  ['ausfallschritt', 'PnmAi4ULLeI'], ['split squat', 'PnmAi4ULLeI'], ['frontkniebeuge', ''], ['kniebeuge', 'wlrVWR11Szw'], ['rumänisches', '2PgDGA4o7SI'], ['kreuzheben', '2PgDGA4o7SI'],
+  ['langhantelrudern', 'uBbrwcr92Hw'], ['kurzhantelrudern', 'uBbrwcr92Hw'], ['kabelrudern', 'uBbrwcr92Hw'], ['bankdrücken', 'MlWrpIE26Rg'], ['schrägbank', 'MlWrpIE26Rg'],
+  ['schulterdrücken', 'VbFERsGRgGM'], ['seitheben', 'ryCKdswmaBE'], ['hammer curl', 'p2e3gCZzCUc'], ['curl', 'UyYWfZ5ifKg'], ['trizeps', 'yk6VdVwww5k'],
+  ['hip thrust', 'MsoX1M8_GSs'], ['glute bridge', 'MsoX1M8_GSs'], ['wadenheben', 'I6NEZ2UlklQ']];
+function ytDefault(name) { const n = String(name).toLowerCase(); for (const [k, v] of YT_RULES) if (n.includes(k)) return v || null; return null; }
 function ytHTML(name) {
-  const id = S.yt && S.yt[name];
-  if (id) return `<div class="vid"><iframe class="yt" src="https://www.youtube-nocookie.com/embed/${esc(id)}?rel=0&playsinline=1" title="YouTube-Video: ${esc(name)}" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen loading="lazy"></iframe><div class="row" style="gap:8px"><span class="small muted" style="flex:1">YouTube-Video</span><button class="link" style="font-size:13px" data-act="ytset" data-n="${esc(name)}">Ändern</button><button class="link" style="font-size:13px;color:var(--warn)" data-act="ytdel" data-n="${esc(name)}">Entfernen</button></div></div>`;
+  const own = S.yt ? S.yt[name] : undefined; const id = own === '' ? null : (own || ytDefault(name)); const isDefault = !own && !!id;
+  if (id && !navigator.onLine) return `<span class="small muted">YouTube-Video gibt’s, sobald du wieder online bist.</span>`;
+  if (id) return `<div class="vid"><iframe class="yt" src="https://www.youtube-nocookie.com/embed/${esc(id)}?rel=0&playsinline=1&hl=de" title="YouTube-Video: ${esc(name)}" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen loading="lazy"></iframe><div class="row" style="gap:8px;flex-wrap:wrap"><span class="small muted" style="flex:1;min-width:140px">${isDefault ? 'Empfohlenes YouTube-Video' : 'Dein YouTube-Video'}</span><button class="link" style="font-size:13px" data-act="ytset" data-n="${esc(name)}">${isDefault ? 'Anderes Video' : 'Ändern'}</button><button class="link" style="font-size:13px;color:var(--warn)" data-act="ytdel" data-n="${esc(name)}">${isDefault ? 'Ausblenden' : 'Entfernen'}</button></div></div>`;
   return `<button class="link" style="font-size:13px;align-self:flex-start" data-act="ytset" data-n="${esc(name)}">${I.info.replace('width="20" height="20"', 'width="18" height="18"')} YouTube-Video verknüpfen</button>`;
 }
 function videoHTML(name) {
@@ -541,6 +554,17 @@ function videoHTML(name) {
   return `<div class="vid"><video src="videos/${pat}.mp4" playsinline loop muted autoplay preload="auto" aria-label="Animiertes Kurzvideo: ${esc(label)}"></video>
     <div class="row" style="gap:8px;flex-wrap:wrap"><span class="small muted" style="flex:1;min-width:160px">Kurzvideo: ${esc(label)} · rot = arbeitende Muskeln</span>${store.assets ? `<button class="link" style="font-size:13px" data-act="vidadd" data-n="${esc(name)}">${I.cam.replace('width="24" height="24"', 'width="18" height="18"')} Eigenes Video</button>` : ''}</div></div>`;
 }
+const VOICE = { v: null, ok: typeof window !== 'undefined' && 'speechSynthesis' in window };
+function pickVoice() { try { const vs = speechSynthesis.getVoices().filter((v) => /^de/i.test(v.lang)); VOICE.v = vs.find((v) => /premium|enhanced|neural|natural/i.test(v.name)) || vs.find((v) => /google/i.test(v.name)) || vs.find((v) => /anna|petra|helena|markus|yannick|katja|conrad|vicki/i.test(v.name)) || vs[0] || null; } catch (e) {} }
+if (VOICE.ok) { pickVoice(); try { speechSynthesis.onvoiceschanged = pickVoice; } catch (e) {} }
+function speak(text, key) {
+  if (!VOICE.ok) { toast('Vorlesen geht in diesem Browser nicht.'); return; }
+  try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = 'de-DE'; if (VOICE.v) u.voice = VOICE.v; u.rate = 0.97;
+    u.onend = u.onerror = () => { if (ui.speaking === key) { ui.speaking = null; refreshSpeak(); } }; ui.speaking = key || null; speechSynthesis.speak(u); refreshSpeak(); } catch (e) {}
+}
+function stopSpeak() { try { speechSynthesis.cancel(); } catch (e) {} ui.speaking = null; refreshSpeak(); }
+function refreshSpeak() { document.querySelectorAll('[data-act="speak"]').forEach((b) => { const on = ui.speaking === b.dataset.n; const l = b.querySelector('.lbl'); if (l) l.textContent = on ? 'Vorlesen stoppen' : 'Anleitung vorlesen'; b.classList.toggle('on', on); }); }
+function guideText(name) { const p = PAT[patFor(name)]; return name + '. ' + 'Es arbeiten vor allem: ' + p[3] + '. So geht’s. ' + p[8].map((t, i) => ['Erstens', 'Zweitens', 'Drittens'][i] + ': ' + t).join(' ') + ' Achte darauf, diese Fehler zu vermeiden. ' + p[9].join(' '); }
 function demoHTML(name) {
   const p = PAT[patFor(name)];
   const [kind, mv, , muscles, label, , , kf, steps, mistakes] = p;
@@ -552,6 +576,7 @@ function demoHTML(name) {
   return `<div class="demo">
     ${videoHTML(name)}
     ${ytHTML(name)}
+    ${VOICE.ok ? `<button class="btn btn-sm btn-soft speak ${ui.speaking === name ? 'on' : ''}" style="align-self:flex-start;background:var(--surface-2)" data-act="speak" data-n="${esc(name)}"><span style="color:var(--accent);display:flex">${I.speaker}</span><span class="lbl">${ui.speaking === name ? 'Vorlesen stoppen' : 'Anleitung vorlesen'}</span></button>` : ''}
     <div class="demo-panels" style="grid-template-columns:${cols}">${panels}</div>
     <div class="row small muted" style="gap:8px"><span style="width:14px;height:6px;border-radius:3px;background:var(--accent);flex-shrink:0"></span><span>Arbeitet: <b style="color:var(--fg);font-weight:600">${esc(muscles)}</b></span></div>
     <div class="between"><b style="font-family:var(--font-display);font-size:16px">${esc(name)}</b><span class="small muted">${esc(label)}</span></div>
@@ -758,7 +783,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 setInterval(() => {
   if (!T || T.done || T.paused || ui.view !== 'train') return;
   T.elapsed++;
-  if (T.rest > 0) { T.rest--; if (T.rest === 0) beep(); }
+  if (T.rest > 0) { T.rest--; if (T.rest === 10 && S.coach) speak('Noch zehn Sekunden.', 'coach'); if (T.rest === 0) { beep(); if (S.coach) speak('Pause vorbei. Nächster Satz.', 'coach'); } }
   const e = document.getElementById('t-el'); if (e) e.textContent = mmss(T.elapsed);
   const r = document.getElementById('t-rest'); if (r) r.textContent = mmss(T.rest);
   const box = document.getElementById('t-restbox'); if (box) { box.classList.toggle('ready', T.rest === 0); const l = document.getElementById('t-restlbl'); if (l) l.textContent = T.rest > 0 ? 'Satzpause' : 'Bereit für den nächsten Satz'; }
@@ -1027,7 +1052,8 @@ function vTrain() {
     <div class="stack" style="gap:6px"><span class="eyebrow">Übung ${T.idx + 1} von ${T.ex.length}</span><h1 style="font-size:28px">${esc(e.name)}</h1>${e.ssWith != null || e.ssOf != null ? `<span class="pill" style="align-self:flex-start;border-color:var(--accent);color:var(--accent)">Supersatz mit ${esc(T.ex[e.ssWith != null ? e.ssWith : e.ssOf].name)} · abwechselnd</span>` : ''}
       <span class="small muted">Ziel: ${e.sets.filter((x) => !x.warm).length} × ${esc(e.target)}${gym && e.sets[0] && e.sets[0].kg != null ? ' · Gewicht anpassen, bis die letzten Wiederholungen schwer sind' : ''}</span>
       <button class="btn btn-sm btn-soft" style="align-self:flex-start;margin-top:4px" data-act="tdemo" aria-expanded="${ui.showDemo}"><span style="color:var(--accent);display:flex">${I.info}</span>${ui.showDemo ? 'Anleitung ausblenden' : 'Anleitung ansehen'}</button>
-      ${ui.showDemo ? demoHTML(e.name) : ''}</div>
+      ${ui.showDemo ? demoHTML(e.name) : ''}
+      ${VOICE.ok ? `<button class="link" style="font-size:13px;align-self:flex-start" data-act="coach" aria-pressed="${!!S.coach}">${I.speaker} Sprachansagen ${S.coach ? 'an' : 'aus'}</button>` : ''}</div>
     <div class="stack" style="gap:8px"><div class="sets-head" style="grid-template-columns:${cols}"><span>Satz</span>${gym ? '<span>kg</span>' : ''}<span>${e.hold ? 'Sek.' : 'Wdh.'}</span>${gym ? '' : '<span>Ziel</span>'}<span></span><span style="text-align:right">Fertig</span></div>
       ${sets}<button class="add-set" data-act="addset">+ Satz hinzufügen</button>
       ${nWarm ? '<span class="small muted">W = Aufwärmsatz mit weniger Gewicht. Zählt nicht für Fortschritt und Volumen.</span>' : ''}
@@ -1284,7 +1310,7 @@ function toast(msg) { const t = document.getElementById('toast'); t.textContent 
 
 /* ============ actions ============ */
 const A = {
-  go(d) { if (d.v === 'train' && !T) return; ui.view = d.v; if (d.v !== 'skill') ui.demo = null; render(); },
+  go(d) { if (d.v === 'train' && !T) return; if (ui.speaking && ui.speaking !== 'coach') stopSpeak(); ui.view = d.v; if (d.v !== 'skill') ui.demo = null; render(); },
   mode(d) { S.mode = d.m; save(); ui.view = S[d.m].setup ? 'home' : 'profile'; ui.cat = 'Alle'; ui.q = ''; ui.free = []; ui.planOpen = -1; render(); },
   startday(d) { const day = plan()[+d.i]; if (T && !T.done) { ui.sheet = { title: 'Training läuft schon', text: '„' + T.title + '“ ist noch nicht beendet. Willst du es verwerfen und „' + day.title + '“ starten?', yes: 'Neues starten', act: () => startTraining(day.title, day.idx, day.blocks.flatMap((b) => b.items)) }; render(); return; } startTraining(day.title, day.idx, day.blocks.flatMap((b) => b.items)); },
   planopen(d) { ui.planOpen = ui.planOpen === +d.i ? -1 : +d.i; render(); },
@@ -1330,7 +1356,7 @@ const A = {
   bwsave() { const list = S.bw || []; const last = list.slice().sort((a, b) => (a.d < b.d ? -1 : 1)).pop(); const kg = ui.bwVal != null ? ui.bwVal : last ? last.kg : S[S.mode].weight; const now = new Date(); const day = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0') + 'T12:00:00';
     S.bw = list.filter((x) => x.d.slice(0, 10) !== day.slice(0, 10)).concat({ d: day, kg }).slice(-400); S.gym.weight = kg; S.cali.weight = kg; ui.bwVal = null; save(); toast(fmtNum(kg) + ' kg eingetragen'); checkAwardsToast(); render(); },
   ytset(d) { ui.sheet = { title: 'YouTube-Video verknüpfen', text: 'Öffne in YouTube ein Anleitungsvideo zu „' + d.n + '“, tippe auf Teilen → Link kopieren und füge den Link hier ein. Das Video läuft dann direkt in der App.', input: 'https://youtu.be/…', value: S.yt[d.n] ? 'https://youtu.be/' + S.yt[d.n] : '', yes: 'Speichern', act: (v) => { const id = ytId(v); if (!id) { toast('Das ist kein gültiger YouTube-Link.'); render(); return; } S.yt[d.n] = id; save(); toast('Video verknüpft'); render(); } }; render(); setTimeout(() => { const i = document.getElementById('sheet-in'); if (i) i.focus(); }, 50); },
-  ytdel(d) { delete S.yt[d.n]; save(); render(); },
+  ytdel(d) { if (S.yt[d.n]) delete S.yt[d.n]; else S.yt[d.n] = ''; if (S.yt[d.n] === undefined && ytDefault(d.n)) {} save(); render(); },
   remstep(d) { S.remind = ((S.remind ?? 1080) + +d.d + 1440) % 1440; save(); render(); },
   ics() {
     const p = plan().filter((d) => d.train); if (!p.length) { toast('Im Plan sind keine Trainingstage.'); return; }
@@ -1367,6 +1393,8 @@ const A = {
   },
   import() { const f = document.getElementById('bk-file'); f.value = ''; f.click(); },
   reviewok() { S.reviewSeen = weekKey(new Date()); save(); render(); },
+  speak(d) { if (ui.speaking === d.n) { stopSpeak(); return; } const demo = document.querySelector(`[data-act="speak"][data-n="${CSS.escape(d.n)}"]`); const v = demo && demo.closest('.demo') && demo.closest('.demo').querySelector('video'); if (v) { try { v.currentTime = 0; v.play(); } catch (e) {} } speak(guideText(d.n), d.n); },
+  coach() { S.coach = !S.coach; save(); if (S.coach) speak('Sprachansagen sind an.', 'coach'); else stopSpeak(); render(); },
   levelup(d) { const sk = d.s; S.skills[sk] = Math.min((S.skills[sk] || 1) + 1, SKILL[sk].stages.length); T.lvlDone = (T.lvlDone || []).concat(sk); save(); saveActive(); toast('Neue Stufe freigeschaltet'); checkAwardsToast(); render(); },
   edit(d) { ui.edit = +d.s; render(); },
   edend() { ui.edit = null; render(); },
@@ -1392,6 +1420,7 @@ function advance(status) {
   T.rest = 0; ui.showDemo = false;
   if (T.idx >= T.ex.length - 1) { finishTraining(); return; }
   T.idx++; saveActive(); render();
+  if (S.coach) { const n = T.ex[T.idx]; speak('Nächste Übung: ' + n.name + '. ' + n.sets.filter((x) => !x.warm).length + ' Sätze, Ziel ' + String(n.target).replace('–', ' bis ') + (n.hold ? '' : ' Wiederholungen') + '.', 'coach'); }
   const sc = document.querySelector('.screen'); if (sc) sc.scrollTop = 0;
 }
 document.addEventListener('click', (ev) => {
