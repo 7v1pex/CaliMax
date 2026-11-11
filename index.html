@@ -1226,27 +1226,52 @@ function vAwards() {
 const HK = { canRun: (() => { try { return window.top === window && /iPhone|iPad|iPod/.test(navigator.userAgent); } catch (e) { return false; } })() };
 function hkBack() { return location.origin + location.pathname; }
 function runShortcut(payload) {
+  HK.wait = Date.now();
   const txt = JSON.stringify({ ...payload, back: hkBack(), today: dayKey() });
   location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent('CaliMax') + '&input=text&text=' + encodeURIComponent(txt);
 }
-function hkNum(v) { const n = parseFloat(String(v == null ? '' : v).replace(/\s/g, '').replace(',', '.')); return isFinite(n) && n >= 0 ? Math.round(n) : 0; }
-function hkWorkoutKcal(h) { const kg = S.bw || 75; const met = h.mode === 'gym' ? 5 : 5.5; return Math.round(met * kg * (h.durationSec / 3600)); }
-function hkReturn() {
-  let q; try { q = new URLSearchParams(location.search); } catch (e) { return; }
-  if (!q.has('yz') && !q.has('hk')) return;
+function hkNum(v) {
+  let t = String(v == null ? '' : v).replace(/[^\d.,]/g, '');
+  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+  const n = parseFloat(t); return isFinite(n) && n >= 0 ? Math.round(n) : 0;
+}
+function hkApply(o) {
   const msgs = [];
-  if (q.has('yz')) {
-    const day = /^\d{4}-\d{2}-\d{2}$/.test(q.get('d') || '') ? q.get('d') : dayKey();
-    const k = hkNum(q.get('kcal')), pr = hkNum(q.get('p'));
+  if (o.food) {
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(o.d || '') ? o.d : dayKey();
+    const k = hkNum(o.kcal), pr = hkNum(o.p);
     S.food = S.food || {}; const list = (S.food[day] = (S.food[day] || []).filter((x) => !x.y));
     if (k || pr) { list.unshift({ n: 'Yazio (Tagessumme)', k, p: pr, y: 1 }); msgs.push('Yazio übernommen: ' + k + ' kcal, ' + pr + ' g Eiweiß'); }
     else msgs.push('Yazio: für heute noch nichts in Apple Health');
     S.hkLast = Date.now(); save();
   }
-  if (q.get('w') === '1') msgs.push('Training in Apple Health gespeichert');
+  if (o.workout) msgs.push('Training in Apple Health gespeichert');
+  if (msgs.length) setTimeout(() => toast(msgs.join(' · ')), 300);
+  if (o.food && S.mode && (!T || T.done)) ui.view = 'food';
+  render();
+}
+async function hkPaste() {
+  try {
+    const t = await navigator.clipboard.readText();
+    if (!/CALIMAX/i.test(t)) { toast('Keine CaliMax-Werte in der Zwischenablage. Lief der Kurzbefehl bis zum Ende?'); return; }
+    const g = (k) => { const m = new RegExp(k + '=([^;]*)', 'i').exec(t); return m ? m[1].trim() : ''; };
+    const sum = (v) => v.split(/[\n\r]+/).reduce((a, x) => a + hkNum(x), 0);
+    hkApply({ food: true, kcal: sum(g('kcal')), p: sum(g('p')), workout: /workout/i.test(g('t')) });
+  } catch (e) { toast('Einfügen nicht erlaubt. Tippe beim Hinweis auf „Einsetzen erlauben“.'); }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !HK.wait || Date.now() - HK.wait > 10 * 60 * 1000) return;
+  HK.wait = 0;
+  ui.sheet = { title: 'Zurück vom Kurzbefehl', text: 'Soll CaliMax die Werte aus dem Kurzbefehl übernehmen? Das iPhone fragt dabei kurz, ob CaliMax einsetzen darf.', yes: 'Werte übernehmen', no: 'Nein', act: () => { hkPaste(); } };
+  render();
+});
+function hkWorkoutKcal(h) { const kg = S.bw || 75; const met = h.mode === 'gym' ? 5 : 5.5; return Math.round(met * kg * (h.durationSec / 3600)); }
+function hkReturn() {
+  let q; try { q = new URLSearchParams(location.search); } catch (e) { return; }
+  if (!q.has('yz') && !q.has('hk')) return;
   try { history.replaceState(null, '', location.pathname); } catch (e) {}
-  if (msgs.length) setTimeout(() => toast(msgs.join(' · ')), 400);
-  if (q.has('yz') && S.mode && (!T || T.done)) ui.view = 'food';
+  hkApply({ food: q.has('yz'), d: q.get('d'), kcal: q.get('kcal'), p: q.get('p'), workout: q.get('w') === '1' || q.get('t') === 'workout' });
 }
 function hkCard() {
   if (!HK.canRun && !S.hk) return '';
@@ -1262,13 +1287,13 @@ function vHkHelp() {
     <span class="muted" style="line-height:1.5">Einmal einrichten, etwa 5 Minuten. Danach holt CaliMax deine Yazio-Tagessumme mit einem Tipp und kann Trainings an Apple Health schicken. Die Namen der Aktionen können je nach iOS-Version leicht abweichen – in Klammern steht der englische Name.</span>
     ${step(1, 'Yazio mit Apple Health verbinden', 'In Yazio: Profil → Einstellungen → Apps &amp; Geräte (Verbindungen) → Apple Health. Erlaube Yazio, Ernährung (Energie, Eiweiß) in Health zu schreiben.')}
     ${step(2, 'Neuen Kurzbefehl anlegen', 'App „Kurzbefehle“ öffnen → „+“ → oben den Namen auf ' + code('CaliMax') + ' setzen. Genau so schreiben, sonst findet ihn die App nicht.')}
-    ${step(3, 'Eingabe lesen', 'Aktion „Wörterbuch abrufen“ (Get Dictionary from Input) hinzufügen, Eingabe: ' + code('Kurzbefehleingabe') + '. Oben erscheint dann „Empfange … Eingabe“ – dort „Text“ auswählen. Ab jetzt heißt das Ergebnis ' + code('Wörterbuch') + '.')}
-    ${step(4, 'Training speichern (optional)', 'Aktion „Wenn“ (If): ' + code('Wörterbuch') + ' → Wert für ' + code('type') + ' ist ' + code('workout') + '. Darin: „Training protokollieren“ (Log Workout) mit Typ „Funktionelles Krafttraining“, Dauer = Wert ' + code('min') + ' (Minuten), Energie = Wert ' + code('kcal') + '. Danach „Text“ mit ' + code('1') + ' und „Variable festlegen“ ' + code('w') + '.')}
-    ${step(5, 'Kalorien von heute holen', 'Aktion „Health-Messwerte suchen“ (Find Health Samples): Typ „Nahrungsenergie“ (Dietary Energy), Startdatum ist heute. Danach „Statistik berechnen“ (Calculate Statistics) → Summe. Dann „Variable festlegen“ ' + code('kcal') + '.')}
-    ${step(6, 'Eiweiß von heute holen', 'Das Gleiche noch einmal mit Typ „Protein“ → Summe → „Variable festlegen“ ' + code('eiweiss') + '.')}
-    ${step(7, 'Zurück zu CaliMax', 'Aktion „URL“ mit diesem Text (die Teile in &lt; &gt; durch die Variablen ersetzen):<br>' + code('&lt;back&gt;?yz=1&amp;d=&lt;today&gt;&amp;kcal=&lt;kcal&gt;&amp;p=&lt;eiweiss&gt;&amp;w=&lt;w&gt;') + '<br><b>back</b> und <b>today</b> sind Werte aus dem Wörterbuch (Wert für Schlüssel). Danach Aktion „URLs öffnen“ (Open URLs).')}
-    ${step(8, 'Testen', 'Tippe unten auf „Jetzt testen“. Beim ersten Mal fragt das iPhone, ob der Kurzbefehl Health lesen darf – erlauben. Danach springst du zurück in CaliMax und siehst die Yazio-Summe unter Ernährung.')}
-    <div class="card stack" style="gap:6px"><b>Gut zu wissen</b><span class="small muted" style="line-height:1.5">CaliMax liest nicht selbst in Apple Health – das darf eine Web-App nicht. Die Zahlen kommen nur, wenn du den Kurzbefehl startest. Holst du mehrmals am Tag, wird die alte Yazio-Summe ersetzt, nicht doppelt gezählt.</span></div>
+    ${step(3, 'Art der Anfrage lesen', '„Wert aus Wörterbuch abrufen“ (Get Dictionary Value): Wert für ' + code('type') + ' in ' + code('Kurzbefehleingabe') + '.')}
+    ${step(4, 'Training speichern', '„Wenn“: ' + code('Wörterbuchwert') + ' (Typ Text) ' + code('workout') + ' ist. Darin drei Mal „Wert aus Wörterbuch abrufen“ für ' + code('min') + ', ' + code('kcal') + ' und ' + code('start') + ' (jeweils in Kurzbefehleingabe). Danach „Training protokollieren“ → Funktionelles Krafttraining. Datum = start, Dauer = min, Kalorien = kcal (jeweils über „Variable auswählen“ den passenden Block antippen). „Sonst“ bleibt leer.')}
+    ${step(5, 'Kalorien von heute', 'Unter „Ende von Wenn“: „Health-Messungen suchen“ – Typ Nahrungsenergie, Startdatum ist heute, Einheit kcal, Gruppieren nach Tag.')}
+    ${step(6, 'Eiweiß von heute', 'Noch einmal „Health-Messungen suchen“ (muss „suchen“ heißen, nicht „filtern“) – Typ Protein, ist heute, Einheit g, Gruppieren nach Tag.')}
+    ${step(7, 'Werte für CaliMax kopieren', 'Aktion „Text“ mit diesem Inhalt:<br>' + code('CALIMAX;kcal=[Kalorien];p=[Eiweiß];t=[Typ]') + '<br>Für die Teile in [ ] über der Tastatur „Variable auswählen“ und antippen: Kalorien = erster Health-Block, Eiweiß = zweiter Health-Block, Typ = der allererste Block „Wert für type“. Danach Aktion „In Zwischenablage kopieren“.')}
+    ${step(8, 'Testen', 'Tippe unten auf „Jetzt testen“. Das iPhone fragt beim ersten Mal nach Health-Zugriff – erlauben. Danach oben links auf „◀ CaliMax“ (oder zurück zur App wischen) und „Werte übernehmen“ tippen.')}
+    <div class="card stack" style="gap:6px"><b>Gut zu wissen</b><span class="small muted" style="line-height:1.5">CaliMax liest nicht selbst in Apple Health – das darf eine Web-App nicht. Die Zahlen kommen nur, wenn du den Kurzbefehl startest, und landen über die Zwischenablage in CaliMax. Holst du mehrmals am Tag, wird die alte Yazio-Summe ersetzt, nicht doppelt gezählt.</span></div>
     <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-primary" data-act="hktest">Jetzt testen</button><button class="btn btn-line" data-act="go" data-v="food">Später</button></div>
   </div>${tabbar()}`;
 }
@@ -1381,7 +1406,7 @@ function vProfile() {
       <button class="btn btn-sm btn-primary" data-act="ics">${I.cal} In den Kalender eintragen</button></section>
     <section class="card stack" style="gap:10px"><span class="small" style="font-weight:600">Datensicherung</span><span class="small muted" style="line-height:1.5">Lade alle Daten (Profil, Pläne, Verlauf, Ernährung, Cardio) als Datei herunter. Mit „Backup einspielen“ holst du sie zurück.</span>
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-line" data-act="export">Backup herunterladen</button><button class="btn btn-sm btn-line" data-act="import">Backup einspielen</button></div></section>
-    <section class="card stack" style="gap:6px"><span class="small" style="font-weight:600">Speicherung</span><span class="small muted" style="line-height:1.5">Alle Daten liegen nur auf diesem Handy, in dieser App. Lade ab und zu ein Backup herunter – zum Beispiel bevor du das Handy wechselst oder Browserdaten löschst.</span><span class="small muted">App-Version 9</span></section>
+    <section class="card stack" style="gap:6px"><span class="small" style="font-weight:600">Speicherung</span><span class="small muted" style="line-height:1.5">Alle Daten liegen nur auf diesem Handy, in dieser App. Lade ab und zu ein Backup herunter – zum Beispiel bevor du das Handy wechselst oder Browserdaten löschst.</span><span class="small muted">App-Version 10</span></section>
   </div><div class="foot"><button class="btn btn-primary btn-grow" data-act="psave">${first ? 'Plan erstellen' : 'Speichern &amp; Plan anzeigen'}</button></div>`;
 }
 function sheetHTML() {
@@ -1446,7 +1471,7 @@ const A = {
   hkhelp() { ui.view = 'hkhelp'; render(); },
   hksync() { runShortcut({ type: 'sync' }); },
   hktest() { runShortcut({ type: 'sync' }); },
-  hkwork() { const h = T && T.summary; if (!h) return; runShortcut({ type: 'workout', min: Math.max(1, Math.round(h.durationSec / 60)), kcal: hkWorkoutKcal(h), start: new Date(Date.parse(h.date) - h.durationSec * 1000).toISOString() }); },
+  hkwork() { const h = T && T.summary; if (!h) return; runShortcut({ type: 'workout', min: Math.max(1, Math.round(h.durationSec / 60)), kcal: hkWorkoutKcal(h), start: new Date(Date.parse(h.date) - h.durationSec * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z') }); },
   finishok() { const h = T && T.summary; const hh = h && H.find((x) => x.id === h.id); if (hh && h.note != null) { hh.note = h.note; saveLocal(); if (store.ok) store.col.doc(hh.id).set(hh).catch(() => {}); } T = null; saveActive(); ui.view = 'home'; render(); },
   sheetyes() { const inp = document.getElementById('sheet-in'); const v = inp ? inp.value : undefined; const a = ui.sheet && ui.sheet.act; ui.sheet = null; if (a) a(v); else render(); },
   sheetno() { ui.sheet = null; render(); },
