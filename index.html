@@ -1550,7 +1550,7 @@ function vProfile() {
       <button class="btn btn-sm btn-primary" data-act="ics">${I.cal} In den Kalender eintragen</button></section>
     <section class="card stack" style="gap:10px"><span class="small" style="font-weight:600">Datensicherung</span><span class="small muted" style="line-height:1.5">Lade alle Daten (Profil, Pläne, Verlauf, Ernährung, Cardio) als Datei herunter. Mit „Backup einspielen“ holst du sie zurück.</span>
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-line" data-act="export">Backup herunterladen</button><button class="btn btn-sm btn-line" data-act="import">Backup einspielen</button></div></section>
-    <section class="card stack" style="gap:6px"><span class="small" style="font-weight:600">Speicherung</span><span class="small muted" style="line-height:1.5">Alle Daten liegen nur auf diesem Handy, in dieser App. Lade ab und zu ein Backup herunter – zum Beispiel bevor du das Handy wechselst oder Browserdaten löschst.</span><span class="small muted">App-Version 12</span></section>
+    <section class="card stack" style="gap:6px"><span class="small" style="font-weight:600">Speicherung</span><span class="small muted" style="line-height:1.5">Alle Daten liegen nur auf diesem Handy, in dieser App. Lade ab und zu ein Backup herunter – zum Beispiel bevor du das Handy wechselst oder Browserdaten löschst.</span><span class="small muted">App-Version 13</span></section>
   </div><div class="foot"><button class="btn btn-primary btn-grow" data-act="psave">${first ? 'Plan erstellen' : 'Speichern &amp; Plan anzeigen'}</button></div>`;
 }
 function sheetHTML() {
@@ -1633,7 +1633,7 @@ const A = {
   hkhelp() { ui.view = 'hkhelp'; render(); },
   hksync() { runShortcut({ type: 'sync' }); },
   hktest() { runShortcut({ type: 'sync' }); },
-  hkwork() { const h = T && T.summary; if (!h) return; runShortcut({ type: 'workout', min: Math.max(1, Math.round(h.durationSec / 60)), kcal: hkWorkoutKcal(h), start: new Date(Date.parse(h.date) - h.durationSec * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z') }); },
+  hkwork() { const h = T && T.summary; if (!h) return; runShortcut({ type: 'workout', min: Math.max(1, Math.round(h.durationSec / 60)), kcal: hkWorkoutKcal(h), start: (() => { const d = new Date(Date.parse(h.date) - h.durationSec * 1000); const z = (n) => String(n).padStart(2, '0'); return z(d.getDate()) + '.' + z(d.getMonth() + 1) + '.' + d.getFullYear() + ', ' + z(d.getHours()) + ':' + z(d.getMinutes()); })() }); },
   finishok() { const h = T && T.summary; const hh = h && H.find((x) => x.id === h.id); if (hh && h.note != null) { hh.note = h.note; saveLocal(); if (store.ok) store.col.doc(hh.id).set(hh).catch(() => {}); } T = null; saveActive(); ui.view = 'home'; render(); },
   sheetyes() { const inp = document.getElementById('sheet-in'); const v = inp ? inp.value : undefined; const a = ui.sheet && ui.sheet.act; ui.sheet = null; if (a) a(v); else render(); },
   sheetno() { ui.sheet = null; render(); },
