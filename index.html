@@ -382,18 +382,18 @@ const SKILLS = [
 ];
 const SKILL = Object.fromEntries(SKILLS.map((s) => [s.name, s]));
 const CALI_STR = {
-  push: [[['Knie-Liegestütze', '3 × 10'], ['Liegestütze', '3 × 8'], ['Bankdips', '3 × 10'], ['Pike Push-ups', '3 × 6']],
+  push: [[['Liegestütze', '3 × 8'], ['Bankdips', '3 × 10'], ['Pike Push-ups', '3 × 6'], ['Knie-Liegestütze', '3 × 12']],
     [['Diamond-Liegestütze', '3 × 10'], ['Dips', '4 × 8'], ['Erhöhte Pike Push-ups', '3 × 8'], ['Pseudo-Planche-Liegestütze', '3 × 8']],
     [['Ring-Dips', '4 × 8'], ['Archer-Liegestütze', '4 × 6 je Seite'], ['Handstand-Liegestütze', '4 × 5'], ['Pseudo-Planche-Liegestütze', '4 × 10']]],
-  pull: [[['Australian Pull-ups', '3 × 10'], ['Negative Klimmzüge', '3 × 5'], ['Scapula Pulls', '3 × 10']],
-    [['Klimmzüge', '4 × 8'], ['Australian Pull-ups', '3 × 12'], ['Chin-ups (Untergriff)', '3 × 8']],
-    [['Explosive Klimmzüge', '4 × 5'], ['Archer-Klimmzüge', '4 × 5 je Seite'], ['Front Lever Rows', '3 × 6']]],
-  legs: [[['Kniebeuge', '3 × 20'], ['Ausfallschritte', '3 × 12 je Bein'], ['Glute Bridge einbeinig', '3 × 10 je Bein']],
-    [['Bulgarian Split Squat', '3 × 10 je Bein'], ['Cossack Squat', '3 × 8 je Seite'], ['Nordic Curls', '3 × 5']],
-    [['Shrimp Squat', '4 × 6 je Bein'], ['Pistol Squat', '4 × 6 je Bein'], ['Nordic Curls', '4 × 5']]],
-  core: [[['Plank', '3 × 30 Sek.'], ['Hollow Body Hold', '3 × 20 Sek.'], ['Hängendes Knieheben', '3 × 10']],
-    [['Hängendes Beinheben', '3 × 10'], ['L-Sit', '4 × 15 Sek.'], ['Hollow Body Hold', '3 × 30 Sek.']],
-    [['Toes to Bar', '3 × 10'], ['Dragon Flag', '3 × 5'], ['V-Sit', '4 × 5 Sek.']]],
+  pull: [[['Australian Pull-ups', '3 × 10'], ['Negative Klimmzüge', '3 × 5'], ['Scapula Pulls', '3 × 10'], ['Aktives Hängen', '3 × 20 Sek.']],
+    [['Klimmzüge', '4 × 8'], ['Australian Pull-ups', '3 × 12'], ['Scapula Pulls', '3 × 10'], ['Aktives Hängen', '3 × 30 Sek.']],
+    [['Explosive Klimmzüge', '4 × 5'], ['Front Lever Rows', '3 × 6'], ['Archer-Klimmzüge', '4 × 5 je Seite'], ['Typewriter-Klimmzüge', '3 × 4 je Seite']]],
+  legs: [[['Kniebeuge', '3 × 20'], ['Ausfallschritte', '3 × 12 je Bein'], ['Glute Bridge einbeinig', '3 × 10 je Bein'], ['Wadenheben einbeinig', '3 × 15 je Bein']],
+    [['Bulgarian Split Squat', '3 × 10 je Bein'], ['Cossack Squat', '3 × 8 je Seite'], ['Nordic Curls', '3 × 5'], ['Jump Squats', '3 × 10']],
+    [['Pistol Squat', '4 × 6 je Bein'], ['Nordic Curls', '4 × 5'], ['Shrimp Squat', '4 × 6 je Bein'], ['Wadenheben einbeinig', '4 × 15 je Bein']]],
+  core: [[['Plank', '3 × 30 Sek.'], ['Hollow Body Hold', '3 × 20 Sek.'], ['Hängendes Knieheben', '3 × 10'], ['Seitstütz', '3 × 20 Sek. je Seite']],
+    [['Hängendes Beinheben', '3 × 10'], ['L-Sit', '4 × 15 Sek.'], ['Hollow Body Hold', '3 × 30 Sek.'], ['Ab Wheel Rollout', '3 × 8']],
+    [['Toes to Bar', '3 × 10'], ['Dragon Flag', '3 × 5'], ['V-Sit', '4 × 5 Sek.'], ['Windshield Wipers', '3 × 6 je Seite']]],
   mobil: [['German Hang', '3 × 20 Sek.'], ['Pike-Dehnung', '3 × 45 Sek.'], ['Brücke', '3 × 20 Sek.']]
 };
 const CALI_TYPES = { 2: ['GK-A', 'GK-B'], 3: ['Push', 'Pull', 'Beine'], 4: ['Push', 'Pull', 'Skills', 'Beine'], 5: ['Push', 'Pull', 'Beine', 'Skills', 'GK-A'], 6: ['Push', 'Pull', 'Beine', 'Push', 'Pull', 'Beine'] };
@@ -722,20 +722,28 @@ function skillBlock(name) {
   }
   return { name: 'Skill: ' + name, items };
 }
-function caliDay(type, P) {
+function caliDay(type, P, k = 0, variant = 0, hasSkillDay = false) {
   const lv = LV[P.level];
   const focus = P.focus.filter((f) => SKILL[f]);
   const by = (g) => focus.filter((f) => SKILL[f].group === g);
-  const str = (cat, n) => CALI_STR[cat][lv].slice(0, n).map(([nm, ds]) => {
-    let d = ds; if (P.goal === 'muskeln') d = d.replace(/^(\d+)/, (m) => String(+m + 1));
-    return caliItem(nm, d, { push: 'Push', pull: 'Pull', legs: 'Beine', core: 'Core' }[cat], '', cat === 'core' ? 60 : 90);
-  });
   const blocks = []; let title, sub;
-  if (type === 'Push') { title = 'Push'; by('push').slice(0, 2).forEach((s) => blocks.push(skillBlock(s))); if (!by('push').length) blocks.push(skillBlock('Handstand')); blocks.push({ name: 'Kraft', items: str('push', 3) }); blocks.push({ name: 'Core', items: str('core', 1) }); }
-  else if (type === 'Pull') { title = 'Pull'; by('pull').slice(0, 2).forEach((s) => blocks.push(skillBlock(s))); blocks.push({ name: 'Kraft', items: str('pull', 3) }); blocks.push({ name: 'Core', items: str('core', 1) }); }
-  else if (type === 'Beine') { title = 'Beine + Core'; by('legs').forEach((s) => blocks.push(skillBlock(s))); by('core').slice(0, 2).forEach((s) => blocks.push(skillBlock(s))); blocks.push({ name: 'Beine', items: str('legs', 3) }); blocks.push({ name: 'Core', items: str('core', 2) }); }
-  else if (type === 'Skills') { title = 'Skill-Tag'; (focus.length ? focus : ['Handstand']).slice(0, 3).forEach((s) => blocks.push(skillBlock(s))); blocks.push({ name: 'Ergänzung', items: str('core', 2) }); }
-  else { title = type === 'GK-A' ? 'Ganzkörper A' : 'Ganzkörper B'; const ps = by('push')[0] || 'Handstand'; const pl = by('pull')[0]; blocks.push(skillBlock(type === 'GK-A' ? ps : (pl || ps))); blocks.push({ name: 'Kraft', items: str('push', 2).concat(str('pull', 2), str('legs', 1)) }); blocks.push({ name: 'Core', items: str('core', 1) }); }
+  // Übungen, die heute schon vorkommen (auch in Skill-Blöcken), werden nicht doppelt eingeplant.
+  const used = () => new Set(blocks.flatMap((b) => b.items.map((it) => it.name.replace(/ \(Versuche\)$/, ''))));
+  const str = (cat, n, opt = {}) => {
+    const list = CALI_STR[cat][lv]; const u = used(); const off = opt.off || 0;
+    let cand = list.map((_, i) => list[(i + off) % list.length]).filter(([nm]) => !u.has(nm));
+    if (opt.noHang) cand = cand.filter(([nm]) => !/häng|toes to bar|windshield/i.test(nm)).concat(cand.filter(([nm]) => /häng|toes to bar|windshield/i.test(nm)));
+    return cand.slice(0, n).map(([nm, ds]) => {
+      let d = ds; if (P.goal === 'muskeln' && cat !== 'core') d = d.replace(/^(\d+)/, (m) => String(Math.min(5, +m + 1)));
+      return caliItem(nm, d, { push: 'Push', pull: 'Pull', legs: 'Beine', core: 'Core' }[cat], '', cat === 'core' ? 60 : 90);
+    });
+  };
+  const kraftN = (nSkills) => (nSkills >= 2 ? 2 : 3);
+  if (type === 'Push') { title = 'Push'; const sk = by('push').slice(0, 2); (sk.length ? sk : ['Handstand']).forEach((s) => blocks.push(skillBlock(s))); blocks.push({ name: 'Kraft', items: str('push', kraftN(sk.length), { off: variant }) }); blocks.push({ name: 'Core', items: str('core', 1, { off: k }) }); }
+  else if (type === 'Pull') { title = 'Pull'; const sk = by('pull').slice(0, 2); sk.forEach((s) => blocks.push(skillBlock(s))); blocks.push({ name: 'Kraft', items: str('pull', sk.length ? 2 : 3, { off: variant }) }); blocks.push({ name: 'Core', items: str('core', 1, { off: k, noHang: true }) }); }
+  else if (type === 'Beine') { title = 'Beine + Core'; const sk = by('legs').concat(by('core').slice(0, 2)); sk.forEach((s) => blocks.push(skillBlock(s))); blocks.push({ name: 'Beine', items: str('legs', 3, { off: variant }) }); blocks.push({ name: 'Core', items: str('core', sk.length >= 2 ? 1 : 2, { off: k }) }); }
+  else if (type === 'Skills') { title = 'Skill-Tag'; (focus.length ? focus : ['Handstand']).slice(0, 3).forEach((s) => blocks.push(skillBlock(s))); blocks.push({ name: 'Ergänzung', items: str('core', 2, { off: k }) }); }
+  else { title = type === 'GK-A' ? 'Ganzkörper A' : 'Ganzkörper B'; const ps = by('push')[0] || 'Handstand'; const pl = by('pull')[0]; if (!hasSkillDay) blocks.push(skillBlock(type === 'GK-A' ? ps : (pl || ps))); const v = type === 'GK-A' ? 0 : 1; blocks.push({ name: 'Kraft', items: str('push', 2, { off: v }).concat(str('pull', 2, { off: v }), str('legs', 1, { off: v })) }); blocks.push({ name: 'Core', items: str('core', 1, { off: k }) }); }
   if (P.goal === 'mobil') blocks.push({ name: 'Beweglichkeit', items: CALI_STR.mobil.map(([n, d]) => caliItem(n, d, 'Mobilität', '', 30)) });
   const skillNames = blocks.filter((b) => b.name.startsWith('Skill: ')).map((b) => b.name.slice(7));
   title = skillNames.length ? title.split(' ')[0] + ' + ' + skillNames[0] : title;
@@ -746,7 +754,7 @@ function caliDay(type, P) {
 function buildCaliPlan() {
   const P = S.cali; const types = CALI_TYPES[P.days] || CALI_TYPES[4]; const days = WEEKDAYS[P.days] || WEEKDAYS[4];
   const plan = DAYS.map((d, i) => ({ idx: i, train: false, title: 'Pause', sub: 'Erholung', blocks: [] }));
-  days.forEach((wd, k) => { plan[wd] = { idx: wd, train: true, ...caliDay(types[k], P) }; });
+  days.forEach((wd, k) => { plan[wd] = { idx: wd, train: true, ...caliDay(types[k], P, k, types.indexOf(types[k]) < k ? 1 : 0, types.includes('Skills')) }; });
   if (P.goal !== 'mobil') { const r = plan.find((d) => !d.train); if (r) { r.title = 'Pause & Mobilität'; r.sub = 'Optional, ca. 20 Min'; r.blocks = [{ name: 'Mobilität (optional)', items: CALI_STR.mobil.map(([n, d]) => caliItem(n, d, 'Mobilität', '', 30)) }]; r.optional = true; } }
   return plan;
 }
@@ -1321,7 +1329,7 @@ function vProfile() {
       <button class="btn btn-sm btn-primary" data-act="ics">${I.cal} In den Kalender eintragen</button></section>
     <section class="card stack" style="gap:10px"><span class="small" style="font-weight:600">Datensicherung</span><span class="small muted" style="line-height:1.5">Lade alle Daten (Profil, Pläne, Verlauf, Ernährung, Cardio) als Datei herunter. Mit „Backup einspielen“ holst du sie zurück.</span>
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-line" data-act="export">Backup herunterladen</button><button class="btn btn-sm btn-line" data-act="import">Backup einspielen</button></div></section>
-    <section class="card stack" style="gap:6px"><span class="small" style="font-weight:600">Speicherung</span><span class="small muted" style="line-height:1.5">Alle Daten liegen nur auf diesem Handy, in dieser App. Lade ab und zu ein Backup herunter – zum Beispiel bevor du das Handy wechselst oder Browserdaten löschst.</span><span class="small muted">App-Version 7</span></section>
+    <section class="card stack" style="gap:6px"><span class="small" style="font-weight:600">Speicherung</span><span class="small muted" style="line-height:1.5">Alle Daten liegen nur auf diesem Handy, in dieser App. Lade ab und zu ein Backup herunter – zum Beispiel bevor du das Handy wechselst oder Browserdaten löschst.</span><span class="small muted">App-Version 8</span></section>
   </div><div class="foot"><button class="btn btn-primary btn-grow" data-act="psave">${first ? 'Plan erstellen' : 'Speichern &amp; Plan anzeigen'}</button></div>`;
 }
 function sheetHTML() {
