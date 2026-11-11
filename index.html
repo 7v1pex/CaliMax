@@ -565,7 +565,7 @@ if (VOICE.ok) { pickVoice(); try { speechSynthesis.onvoiceschanged = () => { pic
 function speak(text, key) {
   if (!VOICE.ok) { toast('Vorlesen geht in diesem Browser nicht.'); return; }
   try {
-    const sy = speechSynthesis; if (sy.speaking || sy.pending) sy.cancel(); if (sy.paused) sy.resume();
+    stopClip(); const sy = speechSynthesis; if (sy.speaking || sy.pending) sy.cancel(); if (sy.paused) sy.resume();
     if (!VOICE.v) pickVoice();
     const parts = String(text).split(/(?<=[.!?:])\s+/).filter(Boolean); let started = false;
     ui.speaking = key || null;
@@ -578,7 +578,24 @@ function speak(text, key) {
     setTimeout(() => { if (!started && ui.speaking === key) { ui.speaking = null; refreshSpeak(); toast('Kein Ton? Lautstärke und Stummschalter prüfen. Android: Einstellungen → Sprachausgabe → deutsche Stimme installieren.'); } }, 3000);
   } catch (e) {}
 }
-function stopSpeak() { try { speechSynthesis.cancel(); } catch (e) {} ui.speaking = null; refreshSpeak(); }
+function stopSpeak() { try { speechSynthesis.cancel(); } catch (e) {} stopClip(); ui.speaking = null; refreshSpeak(); }
+const CLIP_PATS = ['pushup','pullup','hang','dip','squat','lunge','pistol','invrow','legraise','plank','sideplank','hollow','handstand','hspu','lsit','planche','frontlever','backlever','muscleup','flag','dragon','bridge','calf','nordic','rollout','fold'];
+const AUD = { el: null, unlocked: false };
+function audEl() { if (!AUD.el) { try { AUD.el = new Audio(); AUD.el.preload = 'auto'; } catch (e) { AUD.el = null; } } return AUD.el; }
+function unlockAudio() { if (AUD.unlocked) return; const a = audEl(); if (!a) return; try { a.src = 'audio/coach_10s.mp3'; a.muted = true; const p = a.play(); if (p && p.then) p.then(() => { if (a.muted) { a.pause(); a.muted = false; } AUD.unlocked = true; }).catch(() => { a.muted = false; }); } catch (e) {} }
+function stopClip() { const a = AUD.el; if (a) { try { a.onended = null; a.onerror = null; a.pause(); } catch (e) {} } }
+function patMatch(name) { const n = String(name).toLowerCase(); for (const [k, v] of PAT_RULES) if (n.includes(k)) return v; return null; }
+function clipFor(name) { const m = (T && !T.done ? T.mode : S.mode); if (m !== 'cali') return null; const p = patMatch(name); return p && CLIP_PATS.includes(p) ? p : null; }
+function playClip(file, key, fallback) {
+  const a = audEl(); if (!a) { if (fallback) speak(fallback, key); return; }
+  try { speechSynthesis.cancel(); } catch (e) {}
+  stopClip(); ui.speaking = key || null; refreshSpeak();
+  let failed = false; const fail = () => { if (failed) return; failed = true; if (ui.speaking === key) ui.speaking = null; if (fallback) speak(fallback, key); else refreshSpeak(); };
+  a.onended = () => { if (ui.speaking === key) { ui.speaking = null; refreshSpeak(); } };
+  a.onerror = fail;
+  try { a.muted = false; a.src = 'audio/' + file + '.mp3'; a.currentTime = 0; const p = a.play(); if (p && p.catch) p.then(() => { AUD.unlocked = true; }).catch(fail); } catch (e) { fail(); }
+}
+function coachSay(file, text) { if ((T ? T.mode : S.mode) === 'cali') playClip(file, 'coach', text); else speak(text, 'coach'); }
 function refreshSpeak() { document.querySelectorAll('[data-act="speak"]').forEach((b) => { const on = ui.speaking === b.dataset.n; const l = b.querySelector('.lbl'); if (l) l.textContent = on ? 'Vorlesen stoppen' : 'Anleitung vorlesen'; b.classList.toggle('on', on); }); }
 function guideText(name) { const p = PAT[patFor(name)]; return name + '. ' + 'Es arbeiten vor allem: ' + p[3] + '. So geht’s. ' + p[8].map((t, i) => ['Erstens', 'Zweitens', 'Drittens'][i] + ': ' + t).join(' ') + ' Achte darauf, diese Fehler zu vermeiden. ' + p[9].join(' '); }
 function demoHTML(name) {
@@ -592,7 +609,7 @@ function demoHTML(name) {
   return `<div class="demo">
     ${videoHTML(name)}
     ${ytHTML(name)}
-    ${VOICE.ok ? `<button class="btn btn-sm btn-soft speak ${ui.speaking === name ? 'on' : ''}" style="align-self:flex-start;background:var(--surface-2)" data-act="speak" data-n="${esc(name)}"><span style="color:var(--accent);display:flex">${I.speaker}</span><span class="lbl">${ui.speaking === name ? 'Vorlesen stoppen' : 'Anleitung vorlesen'}</span></button>` : ''}
+    ${VOICE.ok || clipFor(name) ? `<button class="btn btn-sm btn-soft speak ${ui.speaking === name ? 'on' : ''}" style="align-self:flex-start;background:var(--surface-2)" data-act="speak" data-n="${esc(name)}"><span style="color:var(--accent);display:flex">${I.speaker}</span><span class="lbl">${ui.speaking === name ? 'Vorlesen stoppen' : 'Anleitung vorlesen'}</span></button>` : ''}
     <div class="demo-panels" style="grid-template-columns:${cols}">${panels}</div>
     <div class="row small muted" style="gap:8px"><span style="width:14px;height:6px;border-radius:3px;background:var(--accent);flex-shrink:0"></span><span>Arbeitet: <b style="color:var(--fg);font-weight:600">${esc(muscles)}</b></span></div>
     <div class="between"><b style="font-family:var(--font-display);font-size:16px">${esc(name)}</b><span class="small muted">${esc(label)}</span></div>
@@ -781,6 +798,7 @@ function platesFor(total, equip) {
 }
 function upperOf(t, v) { const m = /(\d+)\s*[–-]\s*(\d+)/.exec(t || ''); if (m) return +m[2]; const n = /(\d+)/.exec(t || ''); return n ? +n[1] : v; }
 function startTraining(title, dayIdx, items) {
+  if (S.coach) unlockAudio();
   T = { id: uid(), mode: S.mode, title, dayIdx, startedAt: Date.now(), elapsed: 0, paused: false, idx: 0, rest: 0, restMax: 0, done: false,
     ex: items.map((it, i) => ({ ssWith: it.ss && i + 1 < items.length ? i + 1 : null, ssOf: i > 0 && items[i - 1].ss ? i - 1 : null, name: it.name, hold: it.hold, target: it.target, rest: it.rest, status: 'open', planned: it.sets, base: it.val, upper: upperOf(it.target, it.val), compound: !!it.compound, skill: it.skill || null, lvl: it.lvl || 0, equip: it.note || '',
       sets: warmups(it).concat(Array.from({ length: it.sets }, () => ({ kg: it.kg, val: it.val, done: false }))) })) };
@@ -799,14 +817,14 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 setInterval(() => {
   if (!T || T.done || T.paused || ui.view !== 'train') return;
   T.elapsed++;
-  if (T.rest > 0) { T.rest--; if (T.rest === 10 && S.coach) speak('Noch zehn Sekunden.', 'coach'); if (T.rest === 0) { beep(); if (S.coach) speak('Pause vorbei. Nächster Satz.', 'coach'); } }
+  if (T.rest > 0) { T.rest--; if (T.rest === 10 && S.coach) coachSay('coach_10s', 'Noch zehn Sekunden.'); if (T.rest === 0) { beep(); if (S.coach) coachSay('coach_pause' + (1 + Math.floor(Math.random() * 3)), 'Pause vorbei. Nächster Satz.'); } }
   const e = document.getElementById('t-el'); if (e) e.textContent = mmss(T.elapsed);
   const r = document.getElementById('t-rest'); if (r) r.textContent = mmss(T.rest);
   const box = document.getElementById('t-restbox'); if (box) { box.classList.toggle('ready', T.rest === 0); const l = document.getElementById('t-restlbl'); if (l) l.textContent = T.rest > 0 ? 'Satzpause' : 'Bereit für den nächsten Satz'; }
   if (T.elapsed % 5 === 0) saveActive();
 }, 1000);
 function finishTraining() {
-  T.done = true; unwake();
+  T.done = true; unwake(); if (S.coach) coachSay('coach_done', 'Training geschafft! Gute Arbeit.');
   const ex = T.ex.map((e) => ({ name: e.name, hold: e.hold, skipped: e.status === 'skipped', sets: e.sets.filter((s) => s.done && !s.warm).map((s) => (s.feel ? { kg: s.kg, val: s.val, feel: s.feel } : { kg: s.kg, val: s.val })) })).filter((e) => e.sets.length || e.skipped);
   let volume = 0; ex.forEach((e) => e.sets.forEach((s) => { if (s.kg && !e.hold) volume += s.kg * s.val; }));
   const h = { id: T.id, date: new Date().toISOString(), week: weekKey(new Date()), mode: T.mode, title: T.title, dayIdx: T.dayIdx, durationSec: T.elapsed, volume: Math.round(volume), exercises: ex };
@@ -1300,7 +1318,7 @@ function vProfile() {
       <button class="btn btn-sm btn-primary" data-act="ics">${I.cal} In den Kalender eintragen</button></section>
     <section class="card stack" style="gap:10px"><span class="small" style="font-weight:600">Datensicherung</span><span class="small muted" style="line-height:1.5">Lade alle Daten (Profil, Pläne, Verlauf, Ernährung, Cardio) als Datei herunter. Mit „Backup einspielen“ holst du sie zurück.</span>
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-line" data-act="export">Backup herunterladen</button><button class="btn btn-sm btn-line" data-act="import">Backup einspielen</button></div></section>
-    <section class="card stack" style="gap:6px"><span class="small" style="font-weight:600">Speicherung</span><span class="small muted" style="line-height:1.5">Alle Daten liegen nur auf diesem Handy, in dieser App. Lade ab und zu ein Backup herunter – zum Beispiel bevor du das Handy wechselst oder Browserdaten löschst.</span><span class="small muted">App-Version 6</span></section>
+    <section class="card stack" style="gap:6px"><span class="small" style="font-weight:600">Speicherung</span><span class="small muted" style="line-height:1.5">Alle Daten liegen nur auf diesem Handy, in dieser App. Lade ab und zu ein Backup herunter – zum Beispiel bevor du das Handy wechselst oder Browserdaten löschst.</span><span class="small muted">App-Version 7</span></section>
   </div><div class="foot"><button class="btn btn-primary btn-grow" data-act="psave">${first ? 'Plan erstellen' : 'Speichern &amp; Plan anzeigen'}</button></div>`;
 }
 function sheetHTML() {
@@ -1425,8 +1443,8 @@ const A = {
   vrate(d) { S.voiceRate = +d.v; save(); render(); },
   vreload() { pickVoice(); try { speechSynthesis.getVoices(); } catch (e) {} setTimeout(() => { pickVoice(); render(); toast(deVoices().length + ' deutsche Stimmen gefunden'); }, 400); },
   vtest() { speak('Hallo! So klingt diese Stimme. Nächste Übung: Klimmzüge. Vier Sätze, Ziel acht bis zehn Wiederholungen.', 'test'); },
-  speak(d) { if (ui.speaking === d.n) { stopSpeak(); return; } const demo = document.querySelector(`[data-act="speak"][data-n="${CSS.escape(d.n)}"]`); const v = demo && demo.closest('.demo') && demo.closest('.demo').querySelector('video'); if (v) { try { v.currentTime = 0; v.play(); } catch (e) {} } speak(guideText(d.n), d.n); },
-  coach() { S.coach = !S.coach; save(); if (S.coach) speak('Sprachansagen sind an.', 'coach'); else stopSpeak(); render(); },
+  speak(d) { if (ui.speaking === d.n) { stopSpeak(); return; } const demo = document.querySelector(`[data-act="speak"][data-n="${CSS.escape(d.n)}"]`); const v = demo && demo.closest('.demo') && demo.closest('.demo').querySelector('video'); if (v) { try { v.currentTime = 0; v.play(); } catch (e) {} } const c = clipFor(d.n); if (c) playClip(c, d.n, guideText(d.n)); else speak(guideText(d.n), d.n); },
+  coach() { S.coach = !S.coach; save(); if (S.coach) { unlockAudio(); coachSay('coach_on', 'Sprachansagen sind an.'); } else stopSpeak(); render(); },
   levelup(d) { const sk = d.s; S.skills[sk] = Math.min((S.skills[sk] || 1) + 1, SKILL[sk].stages.length); T.lvlDone = (T.lvlDone || []).concat(sk); save(); saveActive(); toast('Neue Stufe freigeschaltet'); checkAwardsToast(); render(); },
   edit(d) { ui.edit = +d.s; render(); },
   edend() { ui.edit = null; render(); },
@@ -1452,7 +1470,8 @@ function advance(status) {
   T.rest = 0; ui.showDemo = false;
   if (T.idx >= T.ex.length - 1) { finishTraining(); return; }
   T.idx++; saveActive(); render();
-  if (S.coach) { const n = T.ex[T.idx]; speak('Nächste Übung: ' + n.name + '. ' + n.sets.filter((x) => !x.warm).length + ' Sätze, Ziel ' + String(n.target).replace('–', ' bis ') + (n.hold ? '' : ' Wiederholungen') + '.', 'coach'); }
+  if (S.coach && T.mode === 'cali') playClip('coach_next', 'coach', 'Nächste Übung: ' + T.ex[T.idx].name + '.');
+  else if (S.coach) { const n = T.ex[T.idx]; speak('Nächste Übung: ' + n.name + '. ' + n.sets.filter((x) => !x.warm).length + ' Sätze, Ziel ' + String(n.target).replace('–', ' bis ') + (n.hold ? '' : ' Wiederholungen') + '.', 'coach'); }
   const sc = document.querySelector('.screen'); if (sc) sc.scrollTop = 0;
 }
 document.addEventListener('click', (ev) => {
