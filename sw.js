@@ -1,5 +1,5 @@
 // CaliMax Service Worker: macht die App offline nutzbar.
-const VERSION = 'calimax-v3';
+const VERSION = 'calimax-v5';
 const CORE = [
  "./",
  "index.html",
