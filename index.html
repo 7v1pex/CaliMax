@@ -253,6 +253,7 @@ const I = {
   back: '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
   home: '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>',
   cal: '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+  scan: '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>',
   search: '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
   star: '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z"/></svg>',
   chart: '<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
@@ -1282,6 +1283,121 @@ function hkCard() {
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-primary" data-act="hksync">Aus Yazio holen</button><button class="btn btn-sm btn-line" data-act="hkoff">Ausschalten</button></div>`
     : `<span class="small muted" style="line-height:1.45">Iss weiter mit Yazio tracken und sieh die Summe hier – plus Trainings automatisch in Apple Health. Braucht einmalig einen Kurzbefehl auf dem iPhone.</span><button class="btn btn-sm btn-soft" style="align-self:flex-start;background:var(--surface-2)" data-act="hkon">Einrichten</button>`}</div>`;
 }
+/* ============ Lebensmittel-Datenbank (Open Food Facts) & Barcode-Scanner ============ */
+const OFF = { cache: {}, busy: false };
+function offNum(v) { const n = parseFloat(v); return isFinite(n) && n >= 0 ? n : null; }
+function offProduct(p) {
+  if (!p) return null; const nu = p.nutriments || {};
+  let kcal = offNum(nu['energy-kcal_100g']); if (kcal == null && offNum(nu.energy_100g) != null) kcal = offNum(nu.energy_100g) / 4.184;
+  const prot = offNum(nu.proteins_100g);
+  const name = (p.product_name_de || p.product_name || p.generic_name_de || '').trim();
+  if (!name || kcal == null) return null;
+  return { code: p.code || '', name: name.slice(0, 60), brand: String(p.brands || '').split(',')[0].trim().slice(0, 30), kcal: Math.round(kcal), prot: Math.round((prot || 0) * 10) / 10, serving: offNum(p.serving_quantity) && offNum(p.serving_quantity) < 2000 ? Math.round(offNum(p.serving_quantity)) : null };
+}
+async function offFetch(url) {
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 12000);
+  try { const r = await fetch(url, { signal: ctl.signal }); if (!r.ok && r.status !== 404) throw new Error('http ' + r.status); return await r.json(); } finally { clearTimeout(t); }
+}
+const OFF_FIELDS = 'code,product_name,product_name_de,generic_name_de,brands,nutriments,serving_quantity';
+async function offSearch(q) {
+  const base = 'https://world.openfoodfacts.org/cgi/search.pl?search_simple=1&action=process&json=1&page_size=24&sort_by=unique_scans_n&lc=de&fields=' + OFF_FIELDS + '&search_terms=' + encodeURIComponent(q);
+  let j = await offFetch(base + '&tagtype_0=countries&tag_contains_0=contains&tag_0=germany');
+  let list = (j.products || []).map(offProduct).filter(Boolean);
+  if (list.length < 4) { j = await offFetch(base); const more = (j.products || []).map(offProduct).filter(Boolean); const seen = new Set(list.map((x) => x.code)); list = list.concat(more.filter((x) => !seen.has(x.code))); }
+  return list.slice(0, 20);
+}
+async function offBarcode(code) {
+  if (OFF.cache[code] !== undefined) return OFF.cache[code];
+  const j = await offFetch('https://world.openfoodfacts.org/api/v2/product/' + encodeURIComponent(code) + '.json?fields=' + OFF_FIELDS);
+  const p = j && j.status === 1 ? offProduct({ ...j.product, code }) : null; OFF.cache[code] = p; return p;
+}
+function offErr() { toast('Keine Verbindung zur Lebensmittel-Datenbank. Bist du online? Sonst unten selbst eintragen.'); }
+async function foodSearch(q) {
+  q = String(q || '').trim(); if (q.length < 2) { toast('Bitte mindestens 2 Buchstaben eingeben.'); return; }
+  if (/^\d{8,14}$/.test(q)) { foodByCode(q); return; }
+  ui.fq = q; ui.fRes = null; ui.fLoading = true; render();
+  try { ui.fRes = await offSearch(q); } catch (e) { ui.fRes = null; offErr(); }
+  ui.fLoading = false; if (ui.view === 'food') render();
+}
+async function foodByCode(code) {
+  ui.fLoading = true; if (ui.view === 'food') render();
+  try { const p = await offBarcode(code); ui.fLoading = false;
+    if (p) { ui.fPick = { ...p, g: p.serving || 100 }; } else toast('Produkt ' + code + ' nicht gefunden – trag es unten selbst ein.');
+  } catch (e) { ui.fLoading = false; offErr(); }
+  if (ui.view === 'food') render();
+}
+function pickCalc(p, g) { return { k: Math.round(p.kcal * g / 100), pr: Math.round(p.prot * g / 100 * 10) / 10 }; }
+function addPicked() {
+  const p = ui.fPick; if (!p) return; const g = Math.max(1, Math.min(3000, Math.round(+p.g || 0)));
+  const c = pickCalc(p, g); addFood(p.name + ' (' + g + ' g)', c.k, Math.round(c.pr));
+  S.recentFood = [{ code: p.code, name: p.name, brand: p.brand, kcal: p.kcal, prot: p.prot, serving: p.serving, g }].concat((S.recentFood || []).filter((x) => !(x.name === p.name && x.brand === p.brand))).slice(0, 15);
+  ui.fPick = null; save(); render();
+}
+function foodPickHTML() {
+  const p = ui.fPick; if (!p) return ''; const g = p.g || 100; const c = pickCalc(p, g);
+  const chips = [...new Set([p.serving, 50, 100, 150, 200, 250].filter(Boolean))];
+  return `<div class="sheet-wrap" data-act="fpickno"><div class="sheet" role="dialog" aria-modal="true" aria-label="Menge wählen" data-stop="1">
+    <div class="stack" style="gap:2px"><h2 style="margin:0">${esc(p.name)}</h2><span class="small muted">${esc(p.brand || '')}${p.brand ? ' · ' : ''}${p.kcal} kcal · ${fmtNum(p.prot)} g Eiweiß je 100 g</span></div>
+    <label class="stack" style="gap:4px" for="fp-g"><span class="small muted">Menge in Gramm</span><input class="inp" id="fp-g" type="number" inputmode="numeric" min="1" max="3000" value="${g}"></label>
+    <div class="chips">${chips.map((x) => `<button class="chip" data-act="fpickg" data-g="${x}">${x === p.serving ? '1 Portion (' + x + ' g)' : x + ' g'}</button>`).join('')}</div>
+    <div class="card between" style="background:var(--surface-2)"><span>Das sind</span><b class="num" id="fp-sum">${c.k} kcal · ${fmtNum(c.pr)} g Eiweiß</b></div>
+    <div class="row" style="gap:10px"><button class="btn btn-soft btn-grow" style="background:var(--surface-2)" data-act="fpickno">Abbrechen</button><button class="btn btn-primary btn-grow" data-act="fpickadd">Hinzufügen</button></div></div></div>`;
+}
+function foodSearchHTML() {
+  const rec = (S.recentFood || []).slice(0, 8);
+  return `<div class="card stack" style="gap:12px"><span class="small" style="font-weight:600">Lebensmittel suchen</span>
+    <form class="row" id="fs-form" style="gap:8px"><input class="inp" id="fs-q" style="flex:1;min-width:0" placeholder="z. B. Skyr, Haferflocken, Barcode" value="${esc(ui.fq || '')}" enterkeyhint="search" autocomplete="off"><button class="icon-btn" type="submit" aria-label="Suchen" style="background:var(--accent);color:var(--on-accent)">${I.search}</button><button class="icon-btn" type="button" data-act="fscan" aria-label="Barcode scannen" style="background:var(--surface-2)">${I.scan}</button></form>
+    ${ui.fLoading ? '<span class="small muted">Suche läuft …</span>' : ''}
+    ${ui.fRes ? (ui.fRes.length ? `<div class="stack" style="gap:6px">${ui.fRes.map((p, i) => `<button class="card between" style="padding:10px 12px;border:none;text-align:left;color:var(--fg);background:var(--surface-2);align-items:center" data-act="fres" data-i="${i}"><span class="ex-txt"><b>${esc(p.name)}</b><span class="small muted">${esc(p.brand || 'ohne Marke')}</span></span><span class="small num" style="text-align:right;white-space:nowrap">${p.kcal} kcal<br><span class="muted">${fmtNum(p.prot)} g Eiw.</span></span></button>`).join('')}<span class="small muted">Werte je 100 g · Quelle: Open Food Facts</span><button class="link" style="font-size:13px;align-self:flex-start" data-act="fresclear">Ergebnisse schließen</button></div>` : '<span class="small muted">Nichts gefunden. Versuch ein anderes Wort oder trag es unten selbst ein.</span>') : ''}
+    ${rec.length && !ui.fRes ? `<div class="stack" style="gap:6px"><span class="small muted">Zuletzt gegessen</span><div class="chips">${rec.map((r, i) => `<button class="chip" data-act="frecent" data-i="${i}">${esc(r.name.length > 22 ? r.name.slice(0, 21) + '…' : r.name)} · ${r.g} g</button>`).join('')}</div></div>` : ''}</div>`;
+}
+/* Barcode-Scanner: eigenes Overlay außerhalb von #app, damit render() die Kamera nicht stört */
+const SCAN = { el: null, stream: null, reader: null, raf: 0, done: false };
+function loadZXing() {
+  if (window.ZXing) return Promise.resolve(window.ZXing);
+  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js'; s.onload = () => (window.ZXing ? res(window.ZXing) : rej(new Error('zxing'))); s.onerror = () => rej(new Error('zxing')); document.head.appendChild(s); });
+}
+function stopScan() {
+  SCAN.done = true; cancelAnimationFrame(SCAN.raf);
+  try { if (SCAN.reader) SCAN.reader.reset(); } catch (e) {}
+  try { if (SCAN.stream) SCAN.stream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+  SCAN.stream = null; SCAN.reader = null; if (SCAN.el) { SCAN.el.remove(); SCAN.el = null; }
+}
+function scanFound(code) { if (SCAN.done) return; stopScan(); try { navigator.vibrate && navigator.vibrate(60); } catch (e) {} foodByCode(String(code)); }
+async function startScan() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast('Die Kamera ist hier nicht verfügbar. Gib den Barcode ins Suchfeld ein.'); return; }
+  stopScan(); SCAN.done = false;
+  const el = document.createElement('div'); SCAN.el = el;
+  el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Barcode scannen');
+  el.style.cssText = 'position:fixed;inset:0;z-index:40;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px 16px calc(24px + env(safe-area-inset-bottom,0px))';
+  el.innerHTML = `<div style="position:relative;width:100%;max-width:420px;aspect-ratio:3/4;border-radius:20px;overflow:hidden;background:#111"><video id="scan-v" playsinline muted autoplay style="width:100%;height:100%;object-fit:cover"></video><div style="position:absolute;left:10%;right:10%;top:40%;height:20%;border:3px solid var(--accent);border-radius:12px;box-shadow:0 0 0 999px rgba(0,0,0,.35)"></div></div>
+    <span id="scan-msg" style="color:#fff;font-size:15px;text-align:center">Kamera startet …</span>
+    <form id="scan-form" style="display:flex;gap:8px;width:100%;max-width:420px"><input class="inp" id="scan-code" inputmode="numeric" placeholder="Oder Barcode-Nummer eingeben" style="flex:1;min-width:0"><button class="btn btn-sm btn-primary" type="submit">OK</button></form>
+    <button class="btn btn-soft" id="scan-close" style="background:#222;color:#fff">Abbrechen</button>`;
+  document.body.appendChild(el);
+  el.querySelector('#scan-close').onclick = () => stopScan();
+  el.querySelector('#scan-form').onsubmit = (ev) => { ev.preventDefault(); const c = el.querySelector('#scan-code').value.replace(/\D/g, ''); if (c.length >= 8) scanFound(c); };
+  const v = el.querySelector('#scan-v'); const msg = el.querySelector('#scan-msg');
+  try {
+    SCAN.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    if (SCAN.done) { stopScan(); return; }
+    v.srcObject = SCAN.stream; await v.play().catch(() => {});
+    msg.textContent = 'Halte den Strichcode in den Rahmen';
+    if ('BarcodeDetector' in window) {
+      const det = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
+      const tick = async () => { if (SCAN.done) return; try { const r = await det.detect(v); if (r && r[0]) { scanFound(r[0].rawValue); return; } } catch (e) {} SCAN.raf = requestAnimationFrame(tick); };
+      tick(); return;
+    }
+    const Z = await loadZXing(); if (SCAN.done) return;
+    const hints = new Map(); hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.EAN_13, Z.BarcodeFormat.EAN_8, Z.BarcodeFormat.UPC_A, Z.BarcodeFormat.UPC_E]);
+    SCAN.reader = new Z.BrowserMultiFormatReader(hints);
+    SCAN.reader.decodeFromStream(SCAN.stream, v, (res) => { if (res) scanFound(res.getText()); });
+  } catch (e) {
+    if (SCAN.done) return;
+    msg.textContent = e && e.name === 'NotAllowedError' ? 'Kein Kamera-Zugriff. Erlaube die Kamera in den Einstellungen – oder gib die Nummer unten ein.' : 'Der Scanner konnte nicht starten. Gib die Barcode-Nummer unten ein.';
+  }
+}
+
 function vHkHelp() {
   const step = (n, t, d) => `<div class="card stack" style="gap:6px"><span class="eyebrow">Schritt ${n}</span><b>${t}</b>${d ? `<span class="small muted" style="line-height:1.5">${d}</span>` : ''}</div>`;
   const code = (t) => `<span style="font-family:ui-monospace,monospace;background:var(--surface-2);padding:1px 6px;border-radius:6px;color:var(--fg)">${t}</span>`;
@@ -1316,6 +1432,7 @@ function vFood() {
         <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-primary" type="submit">Speichern</button><button class="btn btn-sm btn-line" type="button" data-act="goalcancel">Abbrechen</button></div></form>`
       : `<span class="small muted" style="line-height:1.45">${tg.custom ? 'Eigenes Ziel (z. B. aus Yazio). Automatisch berechnet wären ' + tg.auto.kcal + ' kcal und ' + tg.auto.protein + ' g Eiweiß.' : 'Ziel grob geschätzt aus Gewicht, Größe, Alter, Trainingstagen und Ziel (' + esc(goalTxt) + '). Nur ein Richtwert, kein Ernährungsplan.'}</span>
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-soft" style="background:var(--surface-2)" data-act="goaledit">Ziel ändern</button>${tg.custom ? '<button class="btn btn-sm btn-line" data-act="goalauto">Wieder automatisch</button>' : ''}</div>`}</div>
+    ${foodSearchHTML()}
     ${hkCard()}
     <div class="stack"><h2>Schnell hinzufügen</h2><div class="chips">${FOOD_QUICK.map((f, i) => `<button class="chip" data-act="fquick" data-i="${i}">${esc(f[0])}</button>`).join('')}</div><span class="small muted">Werte sind ungefähre Durchschnittswerte.</span></div>
     <form class="card stack" id="food-form" style="gap:10px"><span class="small" style="font-weight:600">Eigener Eintrag</span>
@@ -1412,7 +1529,7 @@ function vProfile() {
       <button class="btn btn-sm btn-primary" data-act="ics">${I.cal} In den Kalender eintragen</button></section>
     <section class="card stack" style="gap:10px"><span class="small" style="font-weight:600">Datensicherung</span><span class="small muted" style="line-height:1.5">Lade alle Daten (Profil, Pläne, Verlauf, Ernährung, Cardio) als Datei herunter. Mit „Backup einspielen“ holst du sie zurück.</span>
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-line" data-act="export">Backup herunterladen</button><button class="btn btn-sm btn-line" data-act="import">Backup einspielen</button></div></section>
-    <section class="card stack" style="gap:6px"><span class="small" style="font-weight:600">Speicherung</span><span class="small muted" style="line-height:1.5">Alle Daten liegen nur auf diesem Handy, in dieser App. Lade ab und zu ein Backup herunter – zum Beispiel bevor du das Handy wechselst oder Browserdaten löschst.</span><span class="small muted">App-Version 10</span></section>
+    <section class="card stack" style="gap:6px"><span class="small" style="font-weight:600">Speicherung</span><span class="small muted" style="line-height:1.5">Alle Daten liegen nur auf diesem Handy, in dieser App. Lade ab und zu ein Backup herunter – zum Beispiel bevor du das Handy wechselst oder Browserdaten löschst.</span><span class="small muted">App-Version 11</span></section>
   </div><div class="foot"><button class="btn btn-primary btn-grow" data-act="psave">${first ? 'Plan erstellen' : 'Speichern &amp; Plan anzeigen'}</button></div>`;
 }
 function sheetHTML() {
@@ -1430,11 +1547,15 @@ function render() {
   const sc = app.querySelector('.screen'); const keep = sc && lastView === ui.view ? sc.scrollTop : 0;
   if (!S.mode && ui.view !== 'start') ui.view = 'start';
   const views = { start: vStart, home: vHome, plan: vPlan, train: vTrain, finish: vFinish, ex: vExercises, skills: vSkills, skill: vSkill, hist: vHistory, profile: vProfile, pick: vPick, exstat: vExStat, awards: vAwards, food: vFood, cardio: vCardio, hkhelp: vHkHelp };
-  app.innerHTML = (views[ui.view] || vHome)() + sheetHTML();
+  app.innerHTML = (views[ui.view] || vHome)() + (ui.view === 'food' ? foodPickHTML() : '') + sheetHTML();
   const sc2 = app.querySelector('.screen'); if (sc2) sc2.scrollTop = keep;
   lastView = ui.view;
   const q = document.getElementById('ex-q');
   if (q) q.addEventListener('input', () => { ui.q = q.value; document.getElementById('ex-list').innerHTML = exList(); });
+  const fsf = document.getElementById('fs-form');
+  if (fsf) fsf.addEventListener('submit', (ev) => { ev.preventDefault(); const i = document.getElementById('fs-q'); if (i) i.blur(); foodSearch(i ? i.value : ''); });
+  const fpg = document.getElementById('fp-g');
+  if (fpg) fpg.addEventListener('input', () => { if (!ui.fPick) return; ui.fPick.g = Math.max(0, Math.round(+fpg.value || 0)); const c = pickCalc(ui.fPick, ui.fPick.g); const o = document.getElementById('fp-sum'); if (o) o.textContent = c.k + ' kcal · ' + fmtNum(c.pr) + ' g Eiweiß'; });
   const gf = document.getElementById('goal-form');
   if (gf) gf.addEventListener('submit', (ev) => { ev.preventDefault(); const k = Math.round(+document.getElementById('g-k').value || 0); const pr = Math.round(+document.getElementById('g-p').value || 0);
     if (k < 800 || k > 6000 || pr < 20 || pr > 400) { toast('Bitte realistische Werte eintragen (800–6000 kcal, 20–400 g).'); return; }
@@ -1476,6 +1597,13 @@ const A = {
   next() { advance('done'); },
   skip() { advance('skipped'); },
   abort() { const any = T.ex.some((e) => e.sets.some((s) => s.done)); ui.sheet = { title: 'Training beenden?', text: any ? 'Du kannst speichern, was du bisher geschafft hast, oder das Training verwerfen.' : 'Es wurde noch kein Satz abgehakt. Das Training wird verworfen.', yes: any ? 'Speichern & beenden' : 'Verwerfen', no: 'Weiter trainieren', act: () => { if (any) { T.ex.forEach((e) => { if (e.status === 'open' && e.sets.some((s) => s.done)) e.status = 'done'; }); finishTraining(); } else { T = null; saveActive(); unwake(); ui.view = 'home'; render(); } } }; render(); },
+  fscan() { startScan(); },
+  fres(d) { const p = ui.fRes && ui.fRes[+d.i]; if (p) { ui.fPick = { ...p, g: p.serving || 100 }; render(); } },
+  fresclear() { ui.fRes = null; ui.fq = ''; render(); },
+  frecent(d) { const r = (S.recentFood || [])[+d.i]; if (r) { ui.fPick = { ...r }; render(); } },
+  fpickg(d) { if (ui.fPick) { ui.fPick.g = +d.g; render(); } },
+  fpickno() { ui.fPick = null; render(); },
+  fpickadd() { addPicked(); },
   goaledit() { ui.goalEdit = true; render(); },
   goalcancel() { ui.goalEdit = false; render(); },
   goalauto() { S.foodGoal = null; save(); toast('Ziel wird wieder automatisch berechnet'); render(); },
