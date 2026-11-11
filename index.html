@@ -911,7 +911,7 @@ function tabbar() {
   const tabs = S.mode === 'gym'
     ? [['home', 'Heute', I.home], ['plan', 'Plan', I.cal], ['ex', 'Übungen', I.search], ['hist', 'Verlauf', I.chart]]
     : [['home', 'Heute', I.home], ['plan', 'Plan', I.cal], ['skills', 'Skills', I.star], ['ex', 'Übungen', I.search], ['hist', 'Verlauf', I.chart]];
-  const cur = ui.view === 'skill' ? 'skills' : ui.view === 'exstat' ? 'hist' : ui.view === 'pick' ? 'plan' : ['food', 'cardio', 'awards'].includes(ui.view) ? 'home' : ui.view;
+  const cur = ui.view === 'skill' ? 'skills' : ui.view === 'exstat' ? 'hist' : ui.view === 'pick' ? 'plan' : ['food', 'cardio', 'awards', 'hkhelp'].includes(ui.view) ? 'home' : ui.view;
   return `<nav class="tabbar" aria-label="Hauptnavigation" style="grid-template-columns:repeat(${tabs.length},minmax(0,1fr))">${tabs.map(([v, l, ic]) => `<button class="tab ${cur === v ? 'on' : ''}" data-act="go" data-v="${v}" ${cur === v ? 'aria-current="page"' : ''}>${ic}${l}</button>`).join('')}</nav>`;
 }
 function header(title, back, right) {
@@ -1121,6 +1121,7 @@ function vFinish() {
     ${prs.length ? `<div class="card" style="border:1px solid var(--accent)"><span class="eyebrow">Neue Bestleistung</span><p style="margin:6px 0 0">${prs.map(esc).join(', ')}</p></div>` : ''}
     <div class="stack" style="gap:8px">${h.exercises.map((e) => `<div class="card between" style="padding:12px 14px;align-items:center"><span style="font-weight:600">${esc(e.name)}</span><span class="small" style="font-weight:600;text-align:right;color:${e.skipped && !e.sets.length ? 'var(--muted)' : 'var(--accent)'}">${e.skipped && !e.sets.length ? 'Übersprungen' : e.sets.length + ' Sätze · ' + e.sets.map((s) => (s.kg ? fmtNum(s.kg) + '×' : '') + s.val + (e.hold ? 's' : '')).join(' / ')}</span></div>`).join('')}</div>
     <label class="stack" style="gap:6px" for="fin-note"><span class="small" style="font-weight:600">Notiz zum Training</span><textarea id="fin-note" class="note" rows="3" placeholder="Wie lief es? Zum Beispiel: Schulter zwickt, neue Technik probiert …">${esc(h.note || '')}</textarea></label>
+    ${S.hk ? `<button class="btn btn-sm btn-soft" style="align-self:flex-start;background:var(--surface-2)" data-act="hkwork">An Apple Health senden (${mmss(h.durationSec)} Min · ca. ${hkWorkoutKcal(h)} kcal)</button>` : ''}
     <p class="small muted" style="margin:0">${store.ok ? 'Gespeichert in deinem Verlauf.' : 'Auf diesem Gerät gespeichert.'}</p>
   </div><div class="foot"><button class="btn btn-primary btn-grow" data-act="finishok">Fertig</button></div>`;
 }
@@ -1221,6 +1222,56 @@ function vAwards() {
     <div class="grid2" style="gap:8px">${AWARDS.map((a) => { const on = got.has(a[0]); return `<div class="award ${on ? 'on' : ''}"><span class="aw-ic">${I.trophy}</span><b>${esc(a[1])}</b><span class="small muted">${esc(a[2])}</span></div>`; }).join('')}</div>
   </div>${tabbar()}`;
 }
+/* ============ Apple Health / Yazio über iPhone-Kurzbefehl ============ */
+const HK = { canRun: (() => { try { return window.top === window && /iPhone|iPad|iPod/.test(navigator.userAgent); } catch (e) { return false; } })() };
+function hkBack() { return location.origin + location.pathname; }
+function runShortcut(payload) {
+  const txt = JSON.stringify({ ...payload, back: hkBack(), today: dayKey() });
+  location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent('CaliMax') + '&input=text&text=' + encodeURIComponent(txt);
+}
+function hkNum(v) { const n = parseFloat(String(v == null ? '' : v).replace(/\s/g, '').replace(',', '.')); return isFinite(n) && n >= 0 ? Math.round(n) : 0; }
+function hkWorkoutKcal(h) { const kg = S.bw || 75; const met = h.mode === 'gym' ? 5 : 5.5; return Math.round(met * kg * (h.durationSec / 3600)); }
+function hkReturn() {
+  let q; try { q = new URLSearchParams(location.search); } catch (e) { return; }
+  if (!q.has('yz') && !q.has('hk')) return;
+  const msgs = [];
+  if (q.has('yz')) {
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(q.get('d') || '') ? q.get('d') : dayKey();
+    const k = hkNum(q.get('kcal')), pr = hkNum(q.get('p'));
+    S.food = S.food || {}; const list = (S.food[day] = (S.food[day] || []).filter((x) => !x.y));
+    if (k || pr) { list.unshift({ n: 'Yazio (Tagessumme)', k, p: pr, y: 1 }); msgs.push('Yazio übernommen: ' + k + ' kcal, ' + pr + ' g Eiweiß'); }
+    else msgs.push('Yazio: für heute noch nichts in Apple Health');
+    S.hkLast = Date.now(); save();
+  }
+  if (q.get('w') === '1') msgs.push('Training in Apple Health gespeichert');
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+  if (msgs.length) setTimeout(() => toast(msgs.join(' · ')), 400);
+  if (q.has('yz') && S.mode && (!T || T.done)) ui.view = 'food';
+}
+function hkCard() {
+  if (!HK.canRun && !S.hk) return '';
+  return `<div class="card stack" style="gap:10px"><div class="between" style="align-items:center"><span class="small" style="font-weight:600">Yazio &amp; Apple Health</span>${S.hk ? '<button class="link" style="font-size:13px;min-height:32px" data-act="hkhelp">Anleitung</button>' : ''}</div>
+    ${S.hk ? `<span class="small muted" style="line-height:1.45">Holt deine Tagessumme aus Yazio (über Apple Health) und schickt Trainings an Apple Health. Läuft über den Kurzbefehl „CaliMax“.${S.hkLast ? ' Zuletzt geholt: ' + new Date(S.hkLast).toLocaleString('de-DE', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' Uhr.' : ''}</span>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-primary" data-act="hksync">Aus Yazio holen</button><button class="btn btn-sm btn-line" data-act="hkoff">Ausschalten</button></div>`
+    : `<span class="small muted" style="line-height:1.45">Iss weiter mit Yazio tracken und sieh die Summe hier – plus Trainings automatisch in Apple Health. Braucht einmalig einen Kurzbefehl auf dem iPhone.</span><button class="btn btn-sm btn-soft" style="align-self:flex-start;background:var(--surface-2)" data-act="hkon">Einrichten</button>`}</div>`;
+}
+function vHkHelp() {
+  const step = (n, t, d) => `<div class="card stack" style="gap:6px"><span class="eyebrow">Schritt ${n}</span><b>${t}</b>${d ? `<span class="small muted" style="line-height:1.5">${d}</span>` : ''}</div>`;
+  const code = (t) => `<span style="font-family:ui-monospace,monospace;background:var(--surface-2);padding:1px 6px;border-radius:6px;color:var(--fg)">${t}</span>`;
+  return `<div class="screen">${header('Yazio &amp; Apple Health', 'food')}
+    <span class="muted" style="line-height:1.5">Einmal einrichten, etwa 5 Minuten. Danach holt CaliMax deine Yazio-Tagessumme mit einem Tipp und kann Trainings an Apple Health schicken. Die Namen der Aktionen können je nach iOS-Version leicht abweichen – in Klammern steht der englische Name.</span>
+    ${step(1, 'Yazio mit Apple Health verbinden', 'In Yazio: Profil → Einstellungen → Apps &amp; Geräte (Verbindungen) → Apple Health. Erlaube Yazio, Ernährung (Energie, Eiweiß) in Health zu schreiben.')}
+    ${step(2, 'Neuen Kurzbefehl anlegen', 'App „Kurzbefehle“ öffnen → „+“ → oben den Namen auf ' + code('CaliMax') + ' setzen. Genau so schreiben, sonst findet ihn die App nicht.')}
+    ${step(3, 'Eingabe lesen', 'Aktion „Wörterbuch abrufen“ (Get Dictionary from Input) hinzufügen, Eingabe: ' + code('Kurzbefehleingabe') + '. Oben erscheint dann „Empfange … Eingabe“ – dort „Text“ auswählen. Ab jetzt heißt das Ergebnis ' + code('Wörterbuch') + '.')}
+    ${step(4, 'Training speichern (optional)', 'Aktion „Wenn“ (If): ' + code('Wörterbuch') + ' → Wert für ' + code('type') + ' ist ' + code('workout') + '. Darin: „Training protokollieren“ (Log Workout) mit Typ „Funktionelles Krafttraining“, Dauer = Wert ' + code('min') + ' (Minuten), Energie = Wert ' + code('kcal') + '. Danach „Text“ mit ' + code('1') + ' und „Variable festlegen“ ' + code('w') + '.')}
+    ${step(5, 'Kalorien von heute holen', 'Aktion „Health-Messwerte suchen“ (Find Health Samples): Typ „Nahrungsenergie“ (Dietary Energy), Startdatum ist heute. Danach „Statistik berechnen“ (Calculate Statistics) → Summe. Dann „Variable festlegen“ ' + code('kcal') + '.')}
+    ${step(6, 'Eiweiß von heute holen', 'Das Gleiche noch einmal mit Typ „Protein“ → Summe → „Variable festlegen“ ' + code('eiweiss') + '.')}
+    ${step(7, 'Zurück zu CaliMax', 'Aktion „URL“ mit diesem Text (die Teile in &lt; &gt; durch die Variablen ersetzen):<br>' + code('&lt;back&gt;?yz=1&amp;d=&lt;today&gt;&amp;kcal=&lt;kcal&gt;&amp;p=&lt;eiweiss&gt;&amp;w=&lt;w&gt;') + '<br><b>back</b> und <b>today</b> sind Werte aus dem Wörterbuch (Wert für Schlüssel). Danach Aktion „URLs öffnen“ (Open URLs).')}
+    ${step(8, 'Testen', 'Tippe unten auf „Jetzt testen“. Beim ersten Mal fragt das iPhone, ob der Kurzbefehl Health lesen darf – erlauben. Danach springst du zurück in CaliMax und siehst die Yazio-Summe unter Ernährung.')}
+    <div class="card stack" style="gap:6px"><b>Gut zu wissen</b><span class="small muted" style="line-height:1.5">CaliMax liest nicht selbst in Apple Health – das darf eine Web-App nicht. Die Zahlen kommen nur, wenn du den Kurzbefehl startest. Holst du mehrmals am Tag, wird die alte Yazio-Summe ersetzt, nicht doppelt gezählt.</span></div>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-primary" data-act="hktest">Jetzt testen</button><button class="btn btn-line" data-act="go" data-v="food">Später</button></div>
+  </div>${tabbar()}`;
+}
 function vFood() {
   const tg = targets(); const day = ui.foodDay || dayKey(); const list = (S.food || {})[day] || [];
   const kcal = list.reduce((a, x) => a + x.k, 0), prot = list.reduce((a, x) => a + x.p, 0);
@@ -1234,6 +1285,7 @@ function vFood() {
       <div class="between"><span class="small" style="font-weight:600">Kalorien</span><span class="num" style="font-weight:700">${kcal} <span class="small muted">/ ${tg.kcal} kcal</span></span></div><div class="bar"><i style="width:${Math.min(100, Math.round(kcal / tg.kcal * 100))}%"></i></div>
       <div class="between"><span class="small" style="font-weight:600">Eiweiß</span><span class="num" style="font-weight:700">${prot} <span class="small muted">/ ${tg.protein} g</span></span></div><div class="bar"><i style="width:${Math.min(100, Math.round(prot / tg.protein * 100))}%"></i></div>
       <span class="small muted" style="line-height:1.45">Ziel grob geschätzt aus Gewicht, Größe, Alter, Trainingstagen und Ziel (${esc(goalTxt)}). Nur ein Richtwert, kein Ernährungsplan.</span></div>
+    ${hkCard()}
     <div class="stack"><h2>Schnell hinzufügen</h2><div class="chips">${FOOD_QUICK.map((f, i) => `<button class="chip" data-act="fquick" data-i="${i}">${esc(f[0])}</button>`).join('')}</div><span class="small muted">Werte sind ungefähre Durchschnittswerte.</span></div>
     <form class="card stack" id="food-form" style="gap:10px"><span class="small" style="font-weight:600">Eigener Eintrag</span>
       <label class="stack" style="gap:4px" for="f-n"><span class="small muted">Was?</span><input class="inp" id="f-n" placeholder="z. B. Spaghetti Bolognese" maxlength="60"></label>
@@ -1329,7 +1381,7 @@ function vProfile() {
       <button class="btn btn-sm btn-primary" data-act="ics">${I.cal} In den Kalender eintragen</button></section>
     <section class="card stack" style="gap:10px"><span class="small" style="font-weight:600">Datensicherung</span><span class="small muted" style="line-height:1.5">Lade alle Daten (Profil, Pläne, Verlauf, Ernährung, Cardio) als Datei herunter. Mit „Backup einspielen“ holst du sie zurück.</span>
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-line" data-act="export">Backup herunterladen</button><button class="btn btn-sm btn-line" data-act="import">Backup einspielen</button></div></section>
-    <section class="card stack" style="gap:6px"><span class="small" style="font-weight:600">Speicherung</span><span class="small muted" style="line-height:1.5">Alle Daten liegen nur auf diesem Handy, in dieser App. Lade ab und zu ein Backup herunter – zum Beispiel bevor du das Handy wechselst oder Browserdaten löschst.</span><span class="small muted">App-Version 8</span></section>
+    <section class="card stack" style="gap:6px"><span class="small" style="font-weight:600">Speicherung</span><span class="small muted" style="line-height:1.5">Alle Daten liegen nur auf diesem Handy, in dieser App. Lade ab und zu ein Backup herunter – zum Beispiel bevor du das Handy wechselst oder Browserdaten löschst.</span><span class="small muted">App-Version 9</span></section>
   </div><div class="foot"><button class="btn btn-primary btn-grow" data-act="psave">${first ? 'Plan erstellen' : 'Speichern &amp; Plan anzeigen'}</button></div>`;
 }
 function sheetHTML() {
@@ -1346,7 +1398,7 @@ function render() {
   const app = document.getElementById('app');
   const sc = app.querySelector('.screen'); const keep = sc && lastView === ui.view ? sc.scrollTop : 0;
   if (!S.mode && ui.view !== 'start') ui.view = 'start';
-  const views = { start: vStart, home: vHome, plan: vPlan, train: vTrain, finish: vFinish, ex: vExercises, skills: vSkills, skill: vSkill, hist: vHistory, profile: vProfile, pick: vPick, exstat: vExStat, awards: vAwards, food: vFood, cardio: vCardio };
+  const views = { start: vStart, home: vHome, plan: vPlan, train: vTrain, finish: vFinish, ex: vExercises, skills: vSkills, skill: vSkill, hist: vHistory, profile: vProfile, pick: vPick, exstat: vExStat, awards: vAwards, food: vFood, cardio: vCardio, hkhelp: vHkHelp };
   app.innerHTML = (views[ui.view] || vHome)() + sheetHTML();
   const sc2 = app.querySelector('.screen'); if (sc2) sc2.scrollTop = keep;
   lastView = ui.view;
@@ -1389,6 +1441,12 @@ const A = {
   next() { advance('done'); },
   skip() { advance('skipped'); },
   abort() { const any = T.ex.some((e) => e.sets.some((s) => s.done)); ui.sheet = { title: 'Training beenden?', text: any ? 'Du kannst speichern, was du bisher geschafft hast, oder das Training verwerfen.' : 'Es wurde noch kein Satz abgehakt. Das Training wird verworfen.', yes: any ? 'Speichern & beenden' : 'Verwerfen', no: 'Weiter trainieren', act: () => { if (any) { T.ex.forEach((e) => { if (e.status === 'open' && e.sets.some((s) => s.done)) e.status = 'done'; }); finishTraining(); } else { T = null; saveActive(); unwake(); ui.view = 'home'; render(); } } }; render(); },
+  hkon() { S.hk = true; save(); ui.view = 'hkhelp'; render(); },
+  hkoff() { S.hk = false; save(); render(); },
+  hkhelp() { ui.view = 'hkhelp'; render(); },
+  hksync() { runShortcut({ type: 'sync' }); },
+  hktest() { runShortcut({ type: 'sync' }); },
+  hkwork() { const h = T && T.summary; if (!h) return; runShortcut({ type: 'workout', min: Math.max(1, Math.round(h.durationSec / 60)), kcal: hkWorkoutKcal(h), start: new Date(Date.parse(h.date) - h.durationSec * 1000).toISOString() }); },
   finishok() { const h = T && T.summary; const hh = h && H.find((x) => x.id === h.id); if (hh && h.note != null) { hh.note = h.note; saveLocal(); if (store.ok) store.col.doc(hh.id).set(hh).catch(() => {}); } T = null; saveActive(); ui.view = 'home'; render(); },
   sheetyes() { const inp = document.getElementById('sheet-in'); const v = inp ? inp.value : undefined; const a = ui.sheet && ui.sheet.act; ui.sheet = null; if (a) a(v); else render(); },
   sheetno() { ui.sheet = null; render(); },
@@ -1529,6 +1587,7 @@ if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navi
 loadLocal();
 ui.cw = lsGet(LS_KEY + '-cw');
 if (S.mode) ui.view = T && !T.done ? 'train' : T && T.done ? 'finish' : 'home';
+hkReturn();
 render();
 initStore();
 </script>
