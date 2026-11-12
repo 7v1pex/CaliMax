@@ -858,6 +858,7 @@ function finishTraining() {
   const ex = T.ex.map((e) => ({ name: e.name, hold: e.hold, skipped: e.status === 'skipped', sets: e.sets.filter((s) => s.done && !s.warm).map((s) => (s.feel ? { kg: s.kg, val: s.val, feel: s.feel } : { kg: s.kg, val: s.val })) })).filter((e) => e.sets.length || e.skipped);
   let volume = 0; ex.forEach((e) => e.sets.forEach((s) => { if (s.kg && !e.hold) volume += s.kg * s.val; }));
   const h = { id: T.id, date: new Date().toISOString(), week: weekKey(new Date()), mode: T.mode, title: T.title, dayIdx: T.dayIdx, durationSec: T.elapsed, volume: Math.round(volume), exercises: ex };
+  h.kcal = trainKcal(h);
   if (h.exercises.some((e) => e.sets.length)) {
     H.unshift(h);
     if (T.mode === 'gym') T.ex.forEach((e) => { const d = e.sets.filter((s) => s.done && !s.warm && s.kg != null); if (d.length) S.lastKg[e.name] = d[d.length - 1].kg; });
@@ -929,6 +930,16 @@ function targets() {
 }
 const FOOD_QUICK = [['Proteinshake (30 g Pulver)', 120, 24], ['3 Eier', 210, 19], ['Magerquark 250 g', 170, 30], ['Hähnchenbrust 150 g', 165, 35], ['Haferflocken 80 g', 300, 11], ['Banane', 105, 1], ['Reis gekocht 200 g', 260, 5], ['Skyr 200 g', 130, 22]];
 const CARDIO_TYPES = ['Laufen', 'Radfahren', 'Gehen', 'Schwimmen', 'Rudern', 'Seilspringen', 'Sonstiges'];
+/* Verbrannte Kalorien: Schätzung über MET × Körpergewicht × Stunden */
+const CARDIO_MET = { Laufen: 9, Radfahren: 7, Gehen: 3.5, Schwimmen: 7, Rudern: 7, Seilspringen: 11, Sonstiges: 6 };
+const bodyKg = () => +((S.cali && S.cali.weight) || (S.gym && S.gym.weight)) || 75;
+function trainKcal(h) { if (h.kcal != null) return h.kcal; const met = h.mode === 'gym' ? 5 : 5.5; return Math.round(met * bodyKg() * ((h.durationSec || 0) / 3600)); }
+function cardioKcal(c) { const met = (CARDIO_MET[c.type] || 6) * ([0, 0.85, 1, 1.15][c.feel] || 1); return Math.round(met * bodyKg() * ((c.min || 0) / 60)); }
+function burnedOn(k) {
+  const tr = H.filter((h) => dayKey(h.date) === k); const ca = (S.cardio || []).filter((c) => dayKey(c.d) === k);
+  const t = tr.reduce((a, h) => a + trainKcal(h), 0), c = ca.reduce((a, x) => a + cardioKcal(x), 0);
+  return { train: t, cardio: c, total: t + c, nTrain: tr.length, nCardio: ca.length };
+}
 
 /* ============ views ============ */
 function tabbar() {
@@ -975,7 +986,8 @@ function quickHTML() {
   const wk = weekKey(new Date()); const cmin = (S.cardio || []).filter((c) => weekKey(c.d) === wk).reduce((a, c) => a + (c.min || 0), 0);
   const got = AWARDS.filter((a) => { try { return a[3](); } catch (e) { return false; } }).length;
   const card = (v, ic, k, val, sub) => `<button class="tile" style="border:none;text-align:left;color:var(--fg)" data-act="go" data-v="${v}"><span class="row" style="gap:6px;color:var(--accent)">${ic}<span class="k" style="color:var(--muted)">${k}</span></span><span class="v" style="font-size:19px">${val}</span><span class="small muted">${sub}</span></button>`;
-  return `<div class="grid3">${card('food', I.food, 'Essen', kcal, 'von ' + tg.kcal + ' kcal')}${card('cardio', I.run, 'Cardio', cmin, 'Min diese Woche')}${card('awards', I.trophy, 'Erfolge', got, 'von ' + AWARDS.length)}</div>`;
+  const bt = burnedOn(dayKey()).total;
+  return `<div class="grid3">${card('food', I.food, 'Essen', kcal, 'von ' + tg.kcal + ' kcal' + (bt ? ' · ' + bt + ' verbrannt' : ''))}${card('cardio', I.run, 'Cardio', cmin, 'Min diese Woche')}${card('awards', I.trophy, 'Erfolge', got, 'von ' + AWARDS.length)}</div>`;
 }
 function weekStrip(p) {
   const mon = mondayOf(new Date()); const t = todayIdx();
@@ -1136,7 +1148,7 @@ function vFinish() {
     return prevBest != null && best > prevBest ? e.name : null; }).filter(Boolean);
   return `<div class="screen" style="padding-top:40px">
     <div style="width:72px;height:72px;border-radius:0;background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center">${I.check.replace('width="20" height="20"', 'width="36" height="36"')}</div>
-    <div class="stack" style="gap:6px"><h1 style="font-size:32px">Training geschafft!</h1><span class="muted">${esc(h.title)} · ${mmss(h.durationSec)} Min${h.volume ? ' · ' + h.volume.toLocaleString('de-DE') + ' kg bewegt' : ''}</span></div>
+    <div class="stack" style="gap:6px"><h1 style="font-size:32px">Training geschafft!</h1><span class="muted">${esc(h.title)} · ${mmss(h.durationSec)} Min · ca. ${trainKcal(h)} kcal${h.volume ? ' · ' + h.volume.toLocaleString('de-DE') + ' kg bewegt' : ''}</span></div>
     ${(T.awards || []).length ? `<div class="card stack" style="gap:8px;border:1px solid var(--accent)"><span class="eyebrow">Neuer Erfolg</span>${T.awards.map((a) => `<div class="row" style="gap:10px"><span style="color:var(--accent);display:flex">${I.trophy}</span><span><b>${esc(a[1])}</b><br><span class="small muted">${esc(a[2])}</span></span></div>`).join('')}</div>` : ''}
     ${(T.ups || []).length ? `<div class="card stack" style="gap:8px"><span class="eyebrow">Nächstes Mal schwerer</span><span class="small muted">Alle Sätze mit den Ziel-Wiederholungen geschafft. Der Plan nimmt beim nächsten Mal mehr Gewicht:</span>${T.ups.map((u) => `<div class="between"><span>${esc(u.name)}</span><span class="num" style="font-weight:700">${fmtNum(u.from)} → <span style="color:var(--accent)">${fmtNum(u.to)} kg</span></span></div>`).join('')}</div>` : ''}
     ${(T.downs || []).length ? `<div class="card stack" style="gap:8px"><span class="eyebrow" style="color:var(--warn)">Nächstes Mal etwas leichter</span><span class="small muted">Die Wiederholungen waren zu wenig und es war schwer. Ein Schritt zurück hilft, sauber weiterzukommen:</span>${T.downs.map((u) => `<div class="between"><span>${esc(u.name)}</span><span class="num" style="font-weight:700">${fmtNum(u.from)} → ${fmtNum(u.to)} kg</span></div>`).join('')}</div>` : ''}
@@ -1214,7 +1226,7 @@ function vHistory() {
       <div class="chart" role="img" aria-label="Trainings pro Woche, letzte 8 Wochen">${weeks.map((w) => `<div><span class="num" style="font-size:11px;color:var(--soft)">${w.n || ''}</span><b class="${w.cur ? 'cur' : ''}" style="height:${Math.round(w.n / maxN * 80)}px"></b><span>${w.label}</span></div>`).join('')}</div></div>
     ${Object.keys(best).length ? `<div class="stack"><div class="between"><h2>Fortschritt pro Übung</h2><span class="small muted">antippen</span></div>${Object.entries(best).sort((a, b) => (a[1][2] < b[1][2] ? 1 : -1)).map(([n, [v, u, d]]) => `<button class="card between" style="border:none;width:100%;text-align:left;color:var(--fg);padding:12px 14px;align-items:center" data-act="exstat" data-n="${esc(n)}"><span class="ex-txt"><b>${esc(n)}</b><span class="small muted">Bestwert · ${fmtDate(d)}</span></span><span class="num" style="font-weight:700;font-size:17px">${fmtNum(v)}<span class="small muted">${u}</span></span><span class="muted" style="display:flex">${I.right}</span></button>`).join('')}</div>` : ''}
     <div class="stack"><h2>Alle Trainings</h2>${mine.length ? mine.map((h) => { const open = ui.histOpen === h.id;
-      return `<div class="day ${open ? 'open' : ''}"><button class="day-head" data-act="hist" data-id="${h.id}" aria-expanded="${open}"><span class="badge">${DAYS[(new Date(h.date).getDay() + 6) % 7]}</span><span class="ex-txt"><b>${esc(h.title)}</b><span class="small muted">${fmtDate(h.date)} · ${Math.round(h.durationSec / 60)} Min${h.volume ? ' · ' + h.volume.toLocaleString('de-DE') + ' kg' : ''}${h.note ? ' · ✎ Notiz' : ''}</span></span><span class="muted" style="transform:rotate(${open ? 180 : 0}deg);display:flex">${I.chev}</span></button>
+      return `<div class="day ${open ? 'open' : ''}"><button class="day-head" data-act="hist" data-id="${h.id}" aria-expanded="${open}"><span class="badge">${DAYS[(new Date(h.date).getDay() + 6) % 7]}</span><span class="ex-txt"><b>${esc(h.title)}</b><span class="small muted">${fmtDate(h.date)} · ${Math.round(h.durationSec / 60)} Min · ${trainKcal(h)} kcal${h.volume ? ' · ' + h.volume.toLocaleString('de-DE') + ' kg' : ''}${h.note ? ' · ✎ Notiz' : ''}</span></span><span class="muted" style="transform:rotate(${open ? 180 : 0}deg);display:flex">${I.chev}</span></button>
         ${open ? `<div class="day-body">${h.exercises.map((e) => `<div class="item"><span class="t"><span style="font-size:14px">${esc(e.name)}</span></span><span class="d" style="font-size:13px">${e.sets.length ? e.sets.map((s) => (s.kg ? fmtNum(s.kg) + '×' : '') + s.val + (e.hold ? 's' : '')).join(' / ') : 'Übersprungen'}</span></div>`).join('')}
           ${h.note ? `<div class="item" style="display:block"><span class="small muted">Notiz</span><p style="margin:4px 0 0;white-space:pre-line;line-height:1.45">${esc(h.note)}</p></div>` : ''}
           <button class="btn btn-sm btn-line" style="margin-top:12px;color:var(--warn)" data-act="delhist" data-id="${h.id}">${I.trash} Training löschen</button></div>` : ''}</div>`; }).join('') : '<div class="card"><p style="margin:0" class="muted">Noch keine Trainings. Starte dein erstes Training auf „Heute“ – danach erscheint es hier mit allen Sätzen.</p></div>'}</div>
@@ -1290,7 +1302,7 @@ document.addEventListener('visibilitychange', () => {
   ui.sheet = { title: 'Zurück vom Kurzbefehl', text: 'Soll CaliMax die Werte aus dem Kurzbefehl übernehmen? Das iPhone fragt dabei kurz, ob CaliMax einsetzen darf.', yes: 'Werte übernehmen', no: 'Nein', act: () => { hkPaste(); } };
   render();
 });
-function hkWorkoutKcal(h) { const kg = +((S[h.mode] || S.gym || {}).weight) || 75; const met = h.mode === 'gym' ? 5 : 5.5; return Math.round(met * kg * (h.durationSec / 3600)); }
+function hkWorkoutKcal(h) { if (h.kcal != null) return h.kcal; const kg = +((S[h.mode] || S.gym || {}).weight) || 75; const met = h.mode === 'gym' ? 5 : 5.5; return Math.round(met * kg * (h.durationSec / 3600)); }
 function hkReturn() {
   let q; try { q = new URLSearchParams(location.search); } catch (e) { return; }
   if (!q.has('yz') && !q.has('hk')) return;
@@ -1436,6 +1448,17 @@ function vHkHelp() {
     <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-primary" data-act="hktest">Jetzt testen</button><button class="btn btn-line" data-act="go" data-v="food">Später</button></div>
   </div>${tabbar()}`;
 }
+function burnCard(day) {
+  const b = burnedOn(day); const eaten = ((S.food || {})[day] || []).reduce((a, x) => a + x.k, 0);
+  const days7 = []; for (let i = 6; i >= 0; i--) { const x = new Date(); x.setDate(x.getDate() - i); const k = dayKey(x); days7.push({ k, label: DAYS[(x.getDay() + 6) % 7], v: burnedOn(k).total }); }
+  const mx = Math.max(100, ...days7.map((x) => x.v));
+  return `<div class="card stack" style="gap:12px">
+    <div class="between" style="align-items:center"><span class="small" style="font-weight:600">Verbrannt durch Sport</span><span class="num" style="font-size:26px">${b.total} <span class="small muted" style="font-weight:600">kcal</span></span></div>
+    <div class="grid2"><div class="stack" style="gap:2px"><span class="small muted">Training${b.nTrain > 1 ? ' (' + b.nTrain + '×)' : ''}</span><b class="num">${b.train} kcal</b></div><div class="stack" style="gap:2px"><span class="small muted">Cardio${b.nCardio > 1 ? ' (' + b.nCardio + '×)' : ''}</span><b class="num">${b.cardio} kcal</b></div></div>
+    <div class="between" style="border-top:2px solid var(--line);padding-top:10px"><span class="small" style="font-weight:600">Gegessen − verbrannt</span><b class="num">${eaten - b.total} kcal</b></div>
+    <div class="chart" style="grid-template-columns:repeat(7,minmax(0,1fr));height:96px" role="img" aria-label="Verbrannte Kalorien, letzte 7 Tage">${days7.map((x) => `<div><span class="num" style="font-size:10px;color:var(--soft)">${x.v || ''}</span><b class="${x.k === day ? 'cur' : ''}" style="height:${Math.round(x.v / mx * 56)}px"></b><span>${x.label}</span></div>`).join('')}</div>
+    <span class="small muted" style="line-height:1.45">Geschätzt aus Trainingsdauer, Körpergewicht und Sportart (ohne Grundumsatz-Abzug, grob ±25 %). Cardio trägst du unter „Cardio“ ein.</span></div>`;
+}
 function vFood() {
   const tg = targets(); const day = ui.foodDay || dayKey(); const list = (S.food || {})[day] || [];
   const kcal = list.reduce((a, x) => a + x.k, 0), prot = list.reduce((a, x) => a + x.p, 0);
@@ -1453,6 +1476,7 @@ function vFood() {
         <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-primary" type="submit">Speichern</button><button class="btn btn-sm btn-line" type="button" data-act="goalcancel">Abbrechen</button></div></form>`
       : `<span class="small muted" style="line-height:1.45">${tg.custom ? 'Eigenes Ziel (z. B. aus Yazio). Automatisch berechnet wären ' + tg.auto.kcal + ' kcal und ' + tg.auto.protein + ' g Eiweiß.' : 'Ziel grob geschätzt aus Gewicht, Größe, Alter, Trainingstagen und Ziel (' + esc(goalTxt) + '). Nur ein Richtwert, kein Ernährungsplan.'}</span>
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-soft" style="background:var(--surface-2)" data-act="goaledit">Ziel ändern</button>${tg.custom ? '<button class="btn btn-sm btn-line" data-act="goalauto">Wieder automatisch</button>' : ''}</div>`}</div>
+    ${burnCard(day)}
     ${foodSearchHTML()}
     ${hkCard()}
     <div class="stack"><h2>Schnell hinzufügen</h2><div class="chips">${FOOD_QUICK.map((f, i) => `<button class="chip" data-act="fquick" data-i="${i}">${esc(f[0])}</button>`).join('')}</div><span class="small muted">Werte sind ungefähre Durchschnittswerte.</span></div>
@@ -1481,7 +1505,7 @@ function vCardio() {
       <label class="stack" style="gap:4px" for="cf-km"><span class="small muted">Strecke in km (optional)</span><input class="inp" id="cf-km" type="number" inputmode="decimal" step="0.1" min="0" max="500" placeholder="z. B. 5,2" value="${esc(f.km)}"></label>
       <div class="seg" style="grid-template-columns:repeat(3,minmax(0,1fr));background:var(--surface-2)">${[[1, 'Locker'], [2, 'Mittel'], [3, 'Hart']].map(([v, l]) => `<button class="${f.feel === v ? 'on' : ''}" data-act="cffeel" data-v="${v}">${l}</button>`).join('')}</div>
       <button class="btn btn-sm btn-primary" data-act="cfsave">Speichern</button></div>
-    <div class="stack"><h2>Letzte Einheiten</h2>${list.length ? list.slice(0, 30).map((x) => `<div class="card between" style="padding:10px 8px 10px 14px;align-items:center"><span class="ex-txt"><b>${esc(x.type)} · ${x.min} Min${x.km ? ' · ' + fmtNum(x.km) + ' km' : ''}</b><span class="small muted">${fmtDate(x.d)}${pace(x) ? ' · ' + pace(x) : ''} · ${['', 'locker', 'mittel', 'hart'][x.feel || 2]}</span></span><button class="ibtn" data-act="cfdel" data-id="${x.id}" aria-label="Einheit löschen">${I.trash}</button></div>`).join('') : '<p class="muted small" style="margin:0">Noch keine Einheit. Starte die Stoppuhr oder trag eine Einheit nachträglich ein.</p>'}</div>
+    <div class="stack"><h2>Letzte Einheiten</h2>${list.length ? list.slice(0, 30).map((x) => `<div class="card between" style="padding:10px 8px 10px 14px;align-items:center"><span class="ex-txt"><b>${esc(x.type)} · ${x.min} Min${x.km ? ' · ' + fmtNum(x.km) + ' km' : ''} · ${cardioKcal(x)} kcal</b><span class="small muted">${fmtDate(x.d)}${pace(x) ? ' · ' + pace(x) : ''} · ${['', 'locker', 'mittel', 'hart'][x.feel || 2]}</span></span><button class="ibtn" data-act="cfdel" data-id="${x.id}" aria-label="Einheit löschen">${I.trash}</button></div>`).join('') : '<p class="muted small" style="margin:0">Noch keine Einheit. Starte die Stoppuhr oder trag eine Einheit nachträglich ein.</p>'}</div>
   </div>${tabbar()}`;
 }
 function vExStat() {
@@ -1550,7 +1574,7 @@ function vProfile() {
       <button class="btn btn-sm btn-primary" data-act="ics">${I.cal} In den Kalender eintragen</button></section>
     <section class="card stack" style="gap:10px"><span class="small" style="font-weight:600">Datensicherung</span><span class="small muted" style="line-height:1.5">Lade alle Daten (Profil, Pläne, Verlauf, Ernährung, Cardio) als Datei herunter. Mit „Backup einspielen“ holst du sie zurück.</span>
       <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-line" data-act="export">Backup herunterladen</button><button class="btn btn-sm btn-line" data-act="import">Backup einspielen</button></div></section>
-    <section class="card stack" style="gap:6px"><span class="small" style="font-weight:600">Speicherung</span><span class="small muted" style="line-height:1.5">Alle Daten liegen nur auf diesem Handy, in dieser App. Lade ab und zu ein Backup herunter – zum Beispiel bevor du das Handy wechselst oder Browserdaten löschst.</span><span class="small muted">App-Version 13</span></section>
+    <section class="card stack" style="gap:6px"><span class="small" style="font-weight:600">Speicherung</span><span class="small muted" style="line-height:1.5">Alle Daten liegen nur auf diesem Handy, in dieser App. Lade ab und zu ein Backup herunter – zum Beispiel bevor du das Handy wechselst oder Browserdaten löschst.</span><span class="small muted">App-Version 14</span></section>
   </div><div class="foot"><button class="btn btn-primary btn-grow" data-act="psave">${first ? 'Plan erstellen' : 'Speichern &amp; Plan anzeigen'}</button></div>`;
 }
 function sheetHTML() {
