@@ -1,5 +1,5 @@
 // CaliMax Service Worker: macht die App offline nutzbar.
-const VERSION = 'calimax-v14';
+const VERSION = 'calimax-v32';
 const CORE = [
  "./",
  "index.html",
@@ -12,7 +12,9 @@ const CORE = [
  "videos/bench.mp4",
  "videos/bridge.mp4",
  "videos/calf.mp4",
+ "videos/cossack.mp4",
  "videos/curl.mp4",
+ "videos/diamond.mp4",
  "videos/dip.mp4",
  "videos/dragon.mp4",
  "videos/flag.mp4",
@@ -31,6 +33,8 @@ const CORE = [
  "videos/muscleup.mp4",
  "videos/nordic.mp4",
  "videos/ohpress.mp4",
+ "videos/pike.mp4",
+ "videos/pikeup.mp4",
  "videos/pistol.mp4",
  "videos/planche.mp4",
  "videos/plank.mp4",
@@ -39,8 +43,11 @@ const CORE = [
  "videos/pushup.mp4",
  "videos/rollout.mp4",
  "videos/row.mp4",
+ "videos/scap.mp4",
  "videos/sideplank.mp4",
  "videos/squat.mp4",
+ "videos/wallhs.mp4",
+ "videos/wallhstap.mp4",
  "audio/backlever.mp3",
  "audio/bridge.mp3",
  "audio/calf.mp3",
